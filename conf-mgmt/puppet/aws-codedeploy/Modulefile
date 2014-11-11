@@ -1,0 +1,10 @@
+name          'aws-codedeploy'
+version       '0.1.0'
+source        ''
+author        'Amazon Web Services'
+license       'Apache 2.0'
+summary       ''
+description   ''
+project_page  ''
+
+dependency 'puppetlabs/stdlib'

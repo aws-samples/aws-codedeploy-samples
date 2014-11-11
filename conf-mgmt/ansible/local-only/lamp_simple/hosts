@@ -1,0 +1,5 @@
+[webservers]
+localhost
+
+[dbservers]
+localhost

@@ -1,0 +1,12 @@
+version: 0.0
+os: linux
+files:
+  - source: /
+    destination: /tmp/elb-test
+hooks:
+  ApplicationStop:
+    - location: deregister_from_elb.sh
+    - location: stop_httpd.sh
+  ApplicationStart:
+    - location: start_httpd.sh
+    - location: register_with_elb.sh

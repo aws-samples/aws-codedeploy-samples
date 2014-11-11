@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# Copyright 2014 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License").
+# You may not use this file except in compliance with the License.
+# A copy of the License is located at
+#
+# http://aws.amazon.com/apache2.0
+#
+# or in the "license" file accompanying this file. This file is distributed
+# on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+# express or implied. See the License for the specific language governing
+# permissions and limitations under the License.
+
+AWS="/usr/local/bin/aws"
+
+APPLICATION_NAME=$(git config --get aws-codedeploy.application-name)
+DEPLOYMENT_GROUP=$(git config --get aws-codedeploy.deployment-group)
+BUCKET_NAME=$(git config --get aws-codedeploy.s3bucket)
+BUNDLE_NAME=$(echo $(basename `pwd`).zip)
+
+# `aws deploy push` will overwrite the bundle in S3. If you'd rather ensure that you have a unique
+# object for each push, you could, for example, append the commit hash:
+#BUNDLE_NAME=$(echo $(basename `pwd`)-$(git log -n 1 --format=%H).zip)
+
+# Call `aws deploy push` to create a new revision of the current repo
+echo "Pushing $BUNDLE_NAME to s3://${BUCKET_NAME} and registering with application '${APPLICATION_NAME}'" 1>&2
+$AWS deploy push \
+  --application-name ${APPLICATION_NAME} \
+  --s3-location bucket=${BUCKET_NAME},key=${BUNDLE_NAME} \
+  --ignore-hidden-files
+
+revision_json="{\"revisionType\":\"S3\",\"s3Location\":{\"bucket\":\"${BUCKET_NAME}\",\"bundleType\":\"zip\",\"key\":\"${BUNDLE_NAME}\"}}"
+
+if [ $? != 0 ]; then
+    echo "Push to codedeploy failed; skipping create-deployment" 1>&2
+else
+    echo "Deploying s3://${BUCKET_NAME}/${BUNDLE_NAME} to application ${APPLICATION_NAME} and deployment group ${DEPLOYMENT_GROUP}" 1>&2
+    $AWS deploy create-deployment \
+        --application-name ${APPLICATION_NAME} \
+        --deployment-group-name ${DEPLOYMENT_GROUP} \
+        --revision $revision_json
+fi

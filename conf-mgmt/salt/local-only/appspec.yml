@@ -1,0 +1,17 @@
+version: 0.0
+os: linux
+files:
+  - source: salt/
+    destination: /etc/salt/codedeploy/
+  - source: index.html
+    destination: /var/www/html/salt/
+hooks:
+  BeforeInstall:
+    - location: deploy_hooks/before_install.sh
+      runas: root
+  ApplicationStart:
+    - location: deploy_hooks/application_start.sh
+      runas: root
+  ValidateService:
+    - location: deploy_hooks/verify_service.sh
+      runas: root

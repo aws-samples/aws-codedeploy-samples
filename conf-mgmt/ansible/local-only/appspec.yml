@@ -1,0 +1,18 @@
+version: 0.0
+os: linux
+files:
+  - source: /
+    destination: /etc/ansible/codedeploy
+hooks:
+  BeforeInstall:
+    - location: before_install.sh
+      timeout: 300
+      runas: root
+  ApplicationStart:
+    - location: application_start.sh
+      timeout: 300
+      runas: root
+  ValidateService:
+    - location: verify_service.sh
+      timeout: 300
+      runas: root
