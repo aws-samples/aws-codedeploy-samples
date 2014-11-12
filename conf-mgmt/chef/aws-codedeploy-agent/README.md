@@ -18,13 +18,14 @@ AWS CodeDeploy Host Agent Cookbook
 ----------------------------------
 
 We've built a custom Chef cookbook to help ease the process of installing the CodeDeploy agent. You
-can download that cookbook here. (TODO: insert real link) To install the CodeDeploy agent, simply
-download the linked archive, copy the codedeploy-agent directory into your chef-repo, and add
-`recipe[codedeploy-agent]` to your run list. If you just want to test this out with a chef-solo
-instance, we've included a sample configuration for you.
+can download that cookbook
+[here](https://github.com/awslabs/aws-codedeploy-samples/tree/master/conf-mgmt/chef/aws-codedeploy-agent/cookbooks/codedeploy-agent/recipes).
+To install the CodeDeploy agent, simply download the linked archive, copy the codedeploy-agent
+directory into your chef-repo, and add `recipe[codedeploy-agent]` to your run list. If you just want
+to test this out with a chef-solo instance, we've included a sample configuration for you.
 
 The cookbook has three simple steps:
 
-1. Download the package for the CodeDeploy host agent.
-1. Install the agent.
-1. Start the agent.
+1.  Download the package for the CodeDeploy host agent.
+1.  Install the agent.
+1.  Start the agent.
