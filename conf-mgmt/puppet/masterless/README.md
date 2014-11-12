@@ -1,12 +1,10 @@
 Using AWS CodeDeploy to Orchestrate Masterless Puppet
 =====================================================
 
-[Puppet](http://puppetlabs.com/) is a great tool for automating infrastructure management, but
-sometimes running and maintaining a central Puppet server – and ensuring that it's highly available –
-can be cost-prohibitive. So you turn to `puppet apply`, where you are fully responsible for orchestrating
-the distribution of modules and running puppet. Up until now, you've used a set of custom
-scripts (perhaps built on top of tools like Capistrano) to do that orchestration. Here, we'll show
-you how AWS CodeDeploy can do all of the heavy lifting for you with almost no custom scripting.
+[Puppet](http://puppetlabs.com/) is a great tool for automating infrastructure management. You may
+be familiar with using custom scripts (perhaps built on top of tools like Capistrano) to orchestrate
+application deployments. Here, we'll show you how AWS CodeDeploy can do all of the heavy lifting for
+you with almost no custom scripting.
 
 For this post, we'll start with an instance that already has the CodeDeploy agent installed. If you
 haven't already – or cleaned up afterwards – please complete *Step 1: Set Up an Amazon EC2 Instance*
@@ -50,25 +48,25 @@ hooks:
       runas: root
 ```
 
-This AppSpec tells AWS CodeDeploy that we want all of our puppet manifests to be installed into
+This AppSpec tells AWS CodeDeploy that we want all of our Puppet manifests to be installed into
 `/etc/puppet/codedeploy`, the war file for our app should be installed into the default tomcat6
 webapps directory, and that it should run the scripts in `deploy_hooks/` on the appropriate
-deployment events. Specifically: one to ensure that puppet is properly installed and one to run
+deployment events. Specifically: one to ensure that Puppet is properly installed and one to run
 `puppet apply`.
 
-Before we run anything though, our `BeforeInstall` checks that puppet is installed and attempts to
-install it. It also runs `puppet module install` for the tomcat module.
+Before we run anything though, our `BeforeInstall` checks that Puppet is installed and attempts to
+install it. It also runs `puppet module install` for the tomcat module and its dependencies.
 
 ```bash
 #!/bin/bash
 
-# Check to see that puppet itself is installed
+# Check to see that Puppet itself is installed
 yum list installed puppet &> /dev/null
 if [ $? != 0 ]; then
     yum -y install puppet
 fi
 
-# Create the base directory for the system-wide puppet modules
+# Create the base directory for the system-wide Puppet modules
 mkdir -p /etc/puppet/modules
 
 puppet="/usr/bin/puppet"
@@ -109,7 +107,7 @@ else
 fi
 ```
 
-Our puppet manifest in this case is simply to set a couple of default tomcat options and start a
+Our Puppet manifest in this case is simply to set a couple of default tomcat options and start a
 tomcat instance:
 
 ```
@@ -136,7 +134,7 @@ Now that we've set up our bundle, we're ready to get things set up in AWS CodeDe
 Set Up the AWS CodeDeploy Application
 -------------------------------------
 
-Even though we might have an application and deployment group set up already set up on this
+Even though we might have an application and deployment group already set up on this
 instance, it's a good practice to create new ones. First, we create the new application:
 
 ```sh
@@ -164,7 +162,7 @@ Push and Deploy the Application
 -------------------------------
 
 At this point, we have a running Amazon EC2 instance that has the AWS CodeDeploy agent installed, an
-application bundle containing our puppet manifests, and an AWS CodeDeploy application ready to accept
+application bundle containing our Puppet manifests, and an AWS CodeDeploy application ready to accept
 deployments.
 
 We next need to upload our bundle and register it as a new revision in AWS CodeDeploy. The `aws deploy push` command in
@@ -198,7 +196,7 @@ up and running.
 Wrapping up
 -----------
 
-Now you're ready to use the power of AWS CodeDeploy to orchestrate your fleet of puppet nodes. In our
-next post, we'll demonstrate how you can use a puppet module to install the AWS CodeDeploy agent, thus
-allowing your infrastructure to continue to be managed by puppet while your application deployments
+Now you're ready to use the power of AWS CodeDeploy to orchestrate your fleet of Puppet nodes. In our
+next post, we'll demonstrate how you can use a Puppet module to install the AWS CodeDeploy agent, thus
+allowing your infrastructure to continue to be managed by Puppet while your application deployments
 are managed via AWS CodeDeploy.
