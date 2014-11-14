@@ -162,7 +162,7 @@ aws deploy create-deployment-group \
     --application-name chef-solo-example \
     --deployment-group-name ChefSolo_DeploymentGroup \
     --deployment-config-name CodeDeployDefault.AllAtOnce \
-    --ec-2-tag-filters Key=Name,Value=CodeDeployDeployment,Type=KEY_AND_VALUE \
+    --ec2-tag-filters Key=Name,Value=CodeDeployDeployment,Type=KEY_AND_VALUE \
     --service-role-arn CodeDeployTrustRoleArn
 ```
 
