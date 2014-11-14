@@ -199,7 +199,7 @@ aws deploy create-deployment \
     --application-name chef-solo-example \
     --deployment-config-name CodeDeployDefault.AllAtOnce \
     --deployment-group-name ChefSolo_DeploymentGroup \
-    --revision bucket=bucket-name,key=chef-solo.zip,bundleType=zip
+    --s3-location bucket=bucket-name,key=chef-solo.zip,bundleType=zip
 ```
 
 Note here that we specify the deployment configuration again. This is so that we can override any
