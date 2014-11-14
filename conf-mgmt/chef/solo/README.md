@@ -21,6 +21,8 @@ configuration. Here, we use a simple "hello world" cookbook, but you're free to 
 The full source for this example bundle is also available 
 [here](https://github.com/awslabs/aws-codedeploy-samples/tree/master/conf-mgmt/chef/solo).
 
+Note:  You will have to use the Apache Maven command, "mvn package" to create the target/hello.war file.
+
 First, create directories for our application and deploy hooks. The base of these will be the root
 of our CodeDeploy revision:
 
