@@ -12,6 +12,7 @@ For this post, we'll start with an instance that already has the CodeDeploy agen
 haven't already – or cleaned up afterwards – please complete *Step 1: Set Up a New Amazon EC2 Instance*
 in the [AWS CodeDeploy Getting Started Guide](http://docs.aws.amazon.com/codedeploy/latest/userguide/how-to-set-up-new-instance.html).
 
+*Note: The CloudFormation example is a lot easier to use: http://docs.aws.amazon.com/codedeploy/latest/userguide/how-to-use-cloud-formation-template.html*
 
 Prepare the bundle
 ------------------
