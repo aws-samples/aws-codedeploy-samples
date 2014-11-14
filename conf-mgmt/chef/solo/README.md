@@ -189,7 +189,7 @@ an Amazon S3 bucket you have set up for AWS CodeDeploy):
 aws deploy push \
     --application-name chef-solo-example \
     --s3-location s3://bucket-name/chef-solo.zip \
-    --ignore-hidden-files true
+    --ignore-hidden-files
 ```
 
 And now we're ready for a deployment:
