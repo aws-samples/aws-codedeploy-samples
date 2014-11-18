@@ -12,6 +12,7 @@ For this post, we'll start with an instance that already has the CodeDeploy agen
 haven't already – or cleaned up afterwards – please complete *Step 1: Set Up a New Amazon EC2 Instance*
 in the [AWS CodeDeploy Getting Started Guide](http://docs.aws.amazon.com/codedeploy/latest/userguide/how-to-set-up-new-instance.html).
 
+*Note: The CloudFormation example is a lot easier to use: http://docs.aws.amazon.com/codedeploy/latest/userguide/how-to-use-cloud-formation-template.html*
 
 Prepare the bundle
 ------------------
@@ -20,6 +21,8 @@ Next, we prepare the bundle, or source content, that will contain our Chef cookb
 configuration. Here, we use a simple "hello world" cookbook, but you're free to substitute your own.
 The full source for this example bundle is also available 
 [here](https://github.com/awslabs/aws-codedeploy-samples/tree/master/conf-mgmt/chef/solo).
+
+Note:  You will have to use the Apache Maven command, "mvn package" to create the target/hello.war file.
 
 First, create directories for our application and deploy hooks. The base of these will be the root
 of our CodeDeploy revision:
@@ -162,7 +165,7 @@ aws deploy create-deployment-group \
     --application-name chef-solo-example \
     --deployment-group-name ChefSolo_DeploymentGroup \
     --deployment-config-name CodeDeployDefault.AllAtOnce \
-    --ec-2-tag-filters Key=Name,Value=CodeDeployDeployment,Type=KEY_AND_VALUE \
+    --ec2-tag-filters Key=Name,Value=CodeDeployDeployment,Type=KEY_AND_VALUE \
     --service-role-arn CodeDeployTrustRoleArn
 ```
 
@@ -186,7 +189,7 @@ an Amazon S3 bucket you have set up for AWS CodeDeploy):
 aws deploy push \
     --application-name chef-solo-example \
     --s3-location s3://bucket-name/chef-solo.zip \
-    --ignore-hidden-files true
+    --ignore-hidden-files
 ```
 
 And now we're ready for a deployment:
@@ -196,7 +199,7 @@ aws deploy create-deployment \
     --application-name chef-solo-example \
     --deployment-config-name CodeDeployDefault.AllAtOnce \
     --deployment-group-name ChefSolo_DeploymentGroup \
-    --revision bucket=bucket-name,key=chef-solo.zip,bundleType=zip
+    --s3-location bucket=bucket-name,key=chef-solo.zip,bundleType=zip
 ```
 
 Note here that we specify the deployment configuration again. This is so that we can override any
