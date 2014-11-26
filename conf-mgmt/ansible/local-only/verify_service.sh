@@ -4,4 +4,4 @@
 # our deploy_hooks directory.
 . $(dirname $0)/common_variables.sh
 
-curl -s http://localhost:8000/ansible/index.php
+curl -s http://localhost:80/ansible/index.php

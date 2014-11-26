@@ -13,3 +13,12 @@
 - name: Start the ntp service
   service: name=ntpd state=started enabled=true
   tags: ntp
+
+- name: Check if /etc/sysconfig/iptables exists
+  stat: path=/etc/sysconfig/iptables
+  register: ipt
+
+- name: Place basic iptables rules
+  template: src=iptables.j2 dest=/etc/sysconfig/iptables
+  notify: restart iptables
+  when: ipt is defined and ipt.stat.exists == false
