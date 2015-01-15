@@ -22,7 +22,7 @@ ELB_LIST=""
 export PATH="$PATH:/usr/bin:/usr/local/bin"
 
 # If true, all messages will be printed. If false, only fatal errors are printed.
-DEBUG=true 
+DEBUG=true
 
 # Number of times to check for a resouce to be in the desired state.
 WAITER_ATTEMPTS=60
@@ -187,7 +187,7 @@ autoscaling_exit_standby() {
 #    non-zero.
 get_instance_state_asg() {
     local instance_id=$1
-    
+
     local state=$($AWS_CLI autoscaling describe-auto-scaling-instances \
         --instance-ids $instance_id \
         --query "AutoScalingInstances[?InstanceId == \`$instance_id\`].LifecycleState | [0]" \
@@ -270,7 +270,7 @@ get_instance_health_elb() {
     msg "Checking status of instance '$instance_id' in load balancer '$elb_name'"
 
     # If describe-instance-health for this instance returns an error, then it's not part of
-    # this ELB. But, if the call was successfull let's still double check that the status is
+    # this ELB. But, if the call was successful let's still double check that the status is
     # valid.
     local instance_status=$($AWS_CLI elb describe-instance-health \
         --load-balancer-name $elb \
@@ -336,7 +336,8 @@ get_elb_list() {
         --output text | sed -e $'s/\t/ /g')
 
     for elb in $all_balancers; do
-        local instance_health=$(get_instance_health_elb $instance_id $elb)
+        local instance_health
+        instance_health=$(get_instance_health_elb $instance_id $elb)
         if [ $? == 0 ]; then
             elb_list="$elb_list $elb"
         fi
