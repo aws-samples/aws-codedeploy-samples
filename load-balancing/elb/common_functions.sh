@@ -155,7 +155,7 @@ autoscaling_exit_standby() {
         return 1
     fi
 
-    if [ "$instance_state" == "InService" || "$instance_state" == "Pending:Wait" ]; then
+    if [ "$instance_state" == "InService" ]; then
         msg "Instance is already InService; nothing to do."
         return 0
     fi
