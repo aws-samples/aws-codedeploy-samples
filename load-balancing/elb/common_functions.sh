@@ -160,6 +160,12 @@ autoscaling_exit_standby() {
         return 0
     fi
 
+    if [ "$instance_state" == "Pending:Wait" ]; then
+        msg "Instance is Pending:Wait; nothing to do."
+        return 0
+    fi
+
+
     msg "Moving instance $instance_id out of Standby"
     $AWS_CLI autoscaling exit-standby \
         --instance-ids $instance_id \
