@@ -18,7 +18,7 @@
 msg "Running AWS CLI with region: $(get_instance_region)"
 
 # get this instance's ID
-INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+INSTANCE_ID=$(get_instance_id)
 if [ $? != 0 -o -z "$INSTANCE_ID" ]; then
     error_exit "Unable to get this instance's ID; cannot continue."
 fi
