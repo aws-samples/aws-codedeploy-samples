@@ -95,6 +95,11 @@ autoscaling_enter_standby() {
         return 0
     fi
 
+    if [ "$instance_state" == "Pending:Wait" ]; then
+        msg "Instance is Pending:Wait; nothing to do."
+        return 0
+    fi
+
     msg "Checking to see if ASG $asg_name will let us decrease desired capacity"
     local min_desired=$($AWS_CLI autoscaling describe-auto-scaling-groups \
         --auto-scaling-group-name $asg_name \
@@ -164,7 +169,6 @@ autoscaling_exit_standby() {
         msg "Instance is Pending:Wait; nothing to do."
         return 0
     fi
-
 
     msg "Moving instance $instance_id out of Standby"
     $AWS_CLI autoscaling exit-standby \
