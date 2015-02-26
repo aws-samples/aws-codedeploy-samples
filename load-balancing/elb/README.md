@@ -44,7 +44,7 @@ To use these scripts in your own application:
 1. Install the AWS CLI on all your instances.
 1. Update the policies on the EC2 instance profile to allow the above actions.
 1. Copy the `.sh` files in this directory into your application source.
-1. Edit your application's `appspec.yml` to run `deregister_from_elb.sh` on the BeforeInstall event,
+1. Edit your application's `appspec.yml` to run `deregister_from_elb.sh` on the ApplicationStop event,
 and `register_with_elb.sh` on the ApplicationStart event.
 1. Edit `common_functions.sh` to set `ELB_LIST` to contain the name(s) of the Elastic Load
 Balancer(s) your deployment group is a part of.
