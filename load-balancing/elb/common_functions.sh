@@ -283,7 +283,7 @@ get_instance_health_elb() {
     # this ELB. But, if the call was successful let's still double check that the status is
     # valid.
     local instance_status=$($AWS_CLI elb describe-instance-health \
-        --load-balancer-name $elb \
+        --load-balancer-name $elb_name \
         --instances $instance_id \
         --query 'InstanceStates[].State' \
         --output text 2>/dev/null)
@@ -295,7 +295,7 @@ get_instance_health_elb() {
                 return 0
                 ;;
             *)
-                msg "Instance $instance_id not part of ELB $elb"
+                msg "Instance '$instance_id' not part of ELB '$elb_name'"
                 return 1
         esac
     fi
