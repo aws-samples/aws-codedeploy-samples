@@ -362,14 +362,14 @@ get_elb_list() {
     fi
 }
 
-# Usage: get_elb_list_faster <EC2 instance ID>
+# Usage: get_elb_list_constant <EC2 instance ID>
 #
 #   Finds all the ELBs that this instance is registered to. After execution, the variable
 #   "INSTANCE_ELBS" will contain the list of load balancers for the given instance.
 #
 #   If the given instance ID isn't found registered to any ELBs, the function returns non-zero
 #   Use this one since we have so many ELBs. This is two lookups with little payload
-get_elb_list_faster() {
+get_elb_list_constant() {
     local instance_id=$1
 
     local asg_name=$($AWS_CLI autoscaling describe-auto-scaling-instances \
