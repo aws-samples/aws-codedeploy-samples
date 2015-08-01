@@ -84,7 +84,8 @@ autoscaling_enter_standby() {
     local asg_name=${2::-1}
 
     msg "Checking if this instance has already been moved in the Standby state"
-    local instance_state=$(get_instance_state_asg $instance_id)
+    local instance_state_temp=$(get_instance_state_asg $instance_id)
+    local instance_state=${instance_state_temp::-1}
     if [ $? != 0 ]; then
         msg "Unable to get this instance's lifecycle state."
         return 1
@@ -154,7 +155,8 @@ autoscaling_exit_standby() {
     local asg_name=${2::-1}
 
     msg "Checking if this instance has already been moved out of Standby state"
-    local instance_state=$(get_instance_state_asg $instance_id)
+    local instance_state_temp=$(get_instance_state_asg $instance_id)
+    local instance_state=${instance_state_temp::-1}
     if [ $? != 0 ]; then
         msg "Unable to get this instance's lifecycle state."
         return 1
