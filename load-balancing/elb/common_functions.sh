@@ -81,7 +81,7 @@ autoscaling_group_name() {
 #   Returns 0 if the instance was successfully moved to standby. Non-zero otherwise.
 autoscaling_enter_standby() {
     local instance_id=$1
-    local asg_name=$2
+    local asg_name=${2::-1}
 
     msg "Checking if this instance has already been moved in the Standby state"
     local instance_state=$(get_instance_state_asg $instance_id)
@@ -151,7 +151,7 @@ autoscaling_enter_standby() {
 #   successful.
 autoscaling_exit_standby() {
     local instance_id=$1
-    local asg_name=$2
+    local asg_name=${2::-1}
 
     msg "Checking if this instance has already been moved out of Standby state"
     local instance_state=$(get_instance_state_asg $instance_id)
@@ -260,8 +260,9 @@ wait_for_state() {
 
         sleep $WAITER_INTERVAL
 
-        instance_state=$($instance_state_cmd)
-        count=$(($count + 1))
+        instance_state_temp=$($instance_state_cmd)
+        instance_state=${instance_state_temp::-1}
+		count=$(($count + 1))
         msg "Instance is currently in state: $instance_state"
     done
 
