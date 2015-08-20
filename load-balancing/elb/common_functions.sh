@@ -199,7 +199,7 @@ autoscaling_exit_standby() {
     # where downscaling/scale-in policies will terminate an instance after executing CodeDeploy
     if [ -z "$min_cap" -o -z "$desired_cap" ]; then
         msg "Unable to determine minimum and desired capacity for ASG $asg_name."
-    elif [ $min_cap == $(($desired_cap-1)) -a $min_cap -gt 0 ]; then
+    elif [ $min_cap == $(($desired_cap-1)) ]; then
         local new_min=$(($min_cap + 1))
         msg "Incrementing ASG $asg_name's minimum size to $new_min"
         msg $($AWS_CLI autoscaling update-auto-scaling-group \
