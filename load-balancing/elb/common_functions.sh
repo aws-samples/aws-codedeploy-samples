@@ -186,6 +186,30 @@ autoscaling_exit_standby() {
         msg "Instance $instance_id did not make it to InService after $wait_timeout seconds"
         return 1
     fi
+    
+    local min_desired=$($AWS_CLI autoscaling describe-auto-scaling-groups \
+        --auto-scaling-group-name $asg_name \
+        --query 'AutoScalingGroups[0].[MinSize, DesiredCapacity]' \
+        --output text)
+
+    local min_cap=$(echo $min_desired | awk '{print $1}')
+    local desired_cap=$(echo $min_desired | awk '{print $2}')
+
+    # Increment the ASG minimum size back to it's original value; this resolves issues
+    # where downscaling/scale-in policies will terminate an instance after executing CodeDeploy
+    if [ -z "$min_cap" -o -z "$desired_cap" ]; then
+        msg "Unable to determine minimum and desired capacity for ASG $asg_name."
+    elif [ $min_cap == $(($desired_cap-1)) -a $min_cap -gt 0 ]; then
+        local new_min=$(($min_cap + 1))
+        msg "Incrementing ASG $asg_name's minimum size to $new_min"
+        msg $($AWS_CLI autoscaling update-auto-scaling-group \
+            --auto-scaling-group-name $asg_name \
+            --min-size $new_min)
+        if [ $? != 0 ]; then
+            msg "Failed to increase ASG $asg_name's minimum size to $new_min."
+            return 1
+        fi
+    fi
 
     return 0
 }
