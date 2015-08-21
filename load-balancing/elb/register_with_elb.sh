@@ -52,7 +52,7 @@ msg "Instance is not part of an ASG, continuing..."
 
 msg "Checking that user set at least one load balancer"
 if test -z "$ELB_LIST"; then
-    error_exit "Must have at least one load balancer to deregister from"
+    error_exit "Must have at least one load balancer to register to"
 fi
 
 # Loop through all LBs the user set, and attempt to register this instance to them.
