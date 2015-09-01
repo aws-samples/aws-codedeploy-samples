@@ -27,6 +27,16 @@ fi
 msg "Started $(basename $0) at $(/bin/date "+%F %T")"
 start_sec=$(/bin/date +%s.%N)
 
+function end_script() {
+    msg "Finished $(basename $0) at $(/bin/date "+%F %T")"
+
+    end_sec=$(/bin/date +%s.%N)
+    elapsed_seconds=$(echo "$end_sec - $start_sec" | /usr/bin/bc)
+
+    msg "Elapsed time: $elapsed_seconds"
+    exit 0
+}
+
 msg "Checking if instance $INSTANCE_ID is part of an AutoScaling group"
 asg=$(autoscaling_group_name $INSTANCE_ID)
 if [ $? == 0 -a -n "$asg" ]; then
@@ -44,15 +54,29 @@ if [ $? == 0 -a -n "$asg" ]; then
         error_exit "Failed to move instance out of standby"
     else
         msg "Instance is no longer in Standby"
-        exit 0
+        elbs=$(autoscaling_group_elbs $asg)
+        if [ "$elbs" == "" ]; then
+          echo "ASG without load balancers."
+        else
+          elbs_array=($elbs)
+          for elb in ${elbs_array[@]}; do
+            echo echo "Waiting for instance to be InService in load balancer : $elb"
+            wait_for_state "elb" $INSTANCE_ID "InService" $elb
+            if [ $? != 0 ]; then
+                error_exit "Failed waiting for $INSTANCE_ID to return to $elb"
+            fi
+          done
+        fi
+        end_script
     fi
 fi
 
 msg "Instance is not part of an ASG, continuing..."
 
 msg "Checking that user set at least one load balancer"
+ELB_LIST=$(get_elb_list)
 if test -z "$ELB_LIST"; then
-    error_exit "Must have at least one load balancer to register to"
+    error_exit "Must have at least one load balancer to deregister from"
 fi
 
 # Loop through all LBs the user set, and attempt to register this instance to them.
@@ -81,9 +105,5 @@ for elb in $ELB_LIST; do
     fi
 done
 
-msg "Finished $(basename $0) at $(/bin/date "+%F %T")"
+end_script
 
-end_sec=$(/bin/date +%s.%N)
-elapsed_seconds=$(echo "$end_sec - $start_sec" | /usr/bin/bc)
-
-msg "Elapsed time: $elapsed_seconds"

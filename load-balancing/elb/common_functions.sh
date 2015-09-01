@@ -73,6 +73,32 @@ autoscaling_group_name() {
     return 0
 }
 
+# Usage: autoscaling_group_elbs <ASG name>
+#
+#    Prints to STDOUT the name of the AutoScaling group load balancers and returns 0. If
+#    there is no load balancers in the ASG, then it prints nothing. On error calling autoscaling, returns
+#    non-zero.
+autoscaling_group_elbs() {
+    local autoscaling_group_name=$1
+
+    # This operates under the assumption that instances are only ever part of a single ASG.
+    local autoscaling_group_elbs=$($AWS_CLI autoscaling describe-auto-scaling-groups \
+        --auto-scaling-group-name $autoscaling_group_name \
+        --query 'AutoScalingGroups[0].LoadBalancerNames' \
+        --output text)
+
+
+    if [ $? != 0 ]; then
+        return 1
+    elif [ "$autoscaling_group_elbs" == "None" ]; then
+        echo ""
+    else
+        echo $autoscaling_group_elbs
+    fi
+
+    return 0
+}
+
 # Usage: autoscaling_enter_standby <EC2 instance ID> <ASG name>
 #
 #   Move <EC2 instance ID> into the Standby state in AutoScaling group <ASG name>. Doing so will
