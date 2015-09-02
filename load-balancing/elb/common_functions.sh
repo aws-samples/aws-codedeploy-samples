@@ -333,43 +333,10 @@ validate_elb() {
 # Usage: get_elb_list <EC2 instance ID>
 #
 #   Finds all the ELBs that this instance is registered to. After execution, the variable
-#   "INSTANCE_ELBS" will contain the list of load balancers for the given instance.
+#   "ELB_LIST" will contain the list of load balancers for the given instance.
 #
 #   If the given instance ID isn't found registered to any ELBs, the function returns non-zero
 get_elb_list() {
-    local instance_id=$1
-
-    local elb_list=""
-
-    local all_balancers=$($AWS_CLI elb describe-load-balancers \
-        --query LoadBalancerDescriptions[*].LoadBalancerName \
-        --output text | sed -e $'s/\t/ /g')
-
-    for elb in $all_balancers; do
-        local instance_health
-        instance_health=$(get_instance_health_elb $instance_id $elb)
-        if [ $? == 0 ]; then
-            elb_list="$elb_list $elb"
-        fi
-    done
-
-    if [ -z "$elb_list" ]; then
-        return 1
-    else 
-        msg "Got load balancer list of: $elb_list"
-        INSTANCE_ELBS=$elb_list
-        return 0
-    fi
-}
-
-# Usage: get_elb_list_constant <EC2 instance ID>
-#
-#   Finds all the ELBs that this instance is registered to. After execution, the variable
-#   "INSTANCE_ELBS" will contain the list of load balancers for the given instance.
-#
-#   If the given instance ID isn't found registered to any ELBs, the function returns non-zero
-#   Use this one since we have so many ELBs. This is two lookups with little payload
-get_elb_list_constant() {
     local instance_id=$1
 
     local asg_name=$($AWS_CLI autoscaling describe-auto-scaling-instances \
@@ -386,11 +353,11 @@ get_elb_list_constant() {
         return 1
     else 
         msg "Got load balancer list of: $elb_list"
-        INSTANCE_ELBS=$elb_list
+        ELB_LIST=$elb_list
         return 0
     fi
-
 }
+
 # Usage: deregister_instance <EC2 instance ID> <ELB name>
 #
 #   Deregisters <EC2 instance ID> from <ELB name>.
