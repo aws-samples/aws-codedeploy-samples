@@ -16,9 +16,6 @@
 # ELB_LIST defines which Elastic Load Balancers this instance should be part of.
 ELB_LIST=""
 
-# Flag for determining if the auto scaling group min was decremented at any point during execution
-ASGMINDECREMENTED="FALSE"
-
 # Under normal circumstances, you shouldn't need to change anything below this line.
 # -----------------------------------------------------------------------------
 
@@ -125,7 +122,9 @@ autoscaling_enter_standby() {
             msg "Failed to reduce ASG $asg_name's minimum size to $new_min. Cannot put this instance into Standby."
             return 1
         else
-            ASGMINDECREMENTED="TRUE"
+            msg "ASG $asg_name's minimum size has been decremented, creating flag file /tmp/asgmindecremented"
+            # Create a "flag" file to denote that the ASG min has been decremented
+            touch /tmp/asgmindecremented
         fi
     fi
 
@@ -192,27 +191,26 @@ autoscaling_exit_standby() {
         return 1
     fi
     
-    if [ $ASGMINDECREMENTED == "TRUE" ]; then
+    if [ -a /tmp/asgmindecremented ]; then
         local min_desired=$($AWS_CLI autoscaling describe-auto-scaling-groups \
             --auto-scaling-group-name $asg_name \
             --query 'AutoScalingGroups[0].[MinSize, DesiredCapacity]' \
             --output text)
 
         local min_cap=$(echo $min_desired | awk '{print $1}')
-        local desired_cap=$(echo $min_desired | awk '{print $2}')
 
-        if [ -z "$min_cap" -o -z "$desired_cap" ]; then
-            msg "Unable to determine minimum and desired capacity for ASG $asg_name."
-        elif [ $min_cap == $(($desired_cap-1)) ]; then
-            local new_min=$(($min_cap + 1))
-            msg "Incrementing ASG $asg_name's minimum size to $new_min"
-            msg $($AWS_CLI autoscaling update-auto-scaling-group \
-                --auto-scaling-group-name $asg_name \
-                --min-size $new_min)
-            if [ $? != 0 ]; then
-                msg "Failed to increase ASG $asg_name's minimum size to $new_min."
-                return 1
-            fi
+        local new_min=$(($min_cap + 1))
+        msg "Incrementing ASG $asg_name's minimum size to $new_min"
+        msg $($AWS_CLI autoscaling update-auto-scaling-group \
+            --auto-scaling-group-name $asg_name \
+            --min-size $new_min)
+        if [ $? != 0 ]; then
+            msg "Failed to increase ASG $asg_name's minimum size to $new_min."
+            return 1
+        else
+            msg "Successfully incremented ASG $asg_name's minimum size"
+            msg "Removing /tmp/asgmindecremented flag file"
+            rm -f /tmp/asgmindecremented
         fi
     else
         msg "Auto scaling group was not decremented previously, not incrementing min value"
