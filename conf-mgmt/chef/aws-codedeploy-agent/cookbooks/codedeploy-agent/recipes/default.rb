@@ -1,10 +1,12 @@
-remote_file "#{Chef::Config[:file_cache_path]}/codedeploy-agent.rpm" do
-    source "https://s3.amazonaws.com/aws-codedeploy-us-east-1/latest/codedeploy-agent.noarch.rpm"
+remote_file "#{Chef::Config[:file_cache_path]}/codedeploy-agent-install" do
+    source "https://s3.amazonaws.com/aws-codedeploy-us-east-1/latest/install"
+    mode 0755
 end
 
-package "codedeploy-agent" do
-	action :install
-	source "#{Chef::Config[:file_cache_path]}/codedeploy-agent.rpm"
+bash "install-codedeploy-agent" do
+  code <<-EOH
+    #{Chef::Config[:file_cache_path]}/codedeploy-agent-install auto
+  EOH
 end
 
 service "codedeploy-agent" do
