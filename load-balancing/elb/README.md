@@ -47,6 +47,6 @@ To use these scripts in your own application:
 1. Edit your application's `appspec.yml` to run `deregister_from_elb.sh` on the ApplicationStop event,
 and `register_with_elb.sh` on the ApplicationStart event.
 1. Edit `common_functions.sh` to set `ELB_LIST` to contain the name(s) of the Elastic Load
-Balancer(s) your deployment group is a part of.
+Balancer(s) your deployment group is a part of. Make sure the entries in ELB_LIST are separated by space.
 1. Deploy!
 
