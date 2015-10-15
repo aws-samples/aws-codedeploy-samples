@@ -122,6 +122,10 @@ autoscaling_enter_standby() {
         if [ $? != 0 ]; then
             msg "Failed to reduce ASG $asg_name's minimum size to $new_min. Cannot put this instance into Standby."
             return 1
+        else
+            msg "ASG $asg_name's minimum size has been decremented, creating flag file /tmp/asgmindecremented"
+            # Create a "flag" file to denote that the ASG min has been decremented
+            touch /tmp/asgmindecremented
         fi
     fi
 
@@ -186,6 +190,31 @@ autoscaling_exit_standby() {
         local wait_timeout=$(($WAITER_INTERVAL * $WAITER_ATTEMPTS))
         msg "Instance $instance_id did not make it to InService after $wait_timeout seconds"
         return 1
+    fi
+    
+    if [ -a /tmp/asgmindecremented ]; then
+        local min_desired=$($AWS_CLI autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-name $asg_name \
+            --query 'AutoScalingGroups[0].[MinSize, DesiredCapacity]' \
+            --output text)
+
+        local min_cap=$(echo $min_desired | awk '{print $1}')
+
+        local new_min=$(($min_cap + 1))
+        msg "Incrementing ASG $asg_name's minimum size to $new_min"
+        msg $($AWS_CLI autoscaling update-auto-scaling-group \
+            --auto-scaling-group-name $asg_name \
+            --min-size $new_min)
+        if [ $? != 0 ]; then
+            msg "Failed to increase ASG $asg_name's minimum size to $new_min."
+            return 1
+        else
+            msg "Successfully incremented ASG $asg_name's minimum size"
+            msg "Removing /tmp/asgmindecremented flag file"
+            rm -f /tmp/asgmindecremented
+        fi
+    else
+        msg "Auto scaling group was not decremented previously, not incrementing min value"
     fi
 
     return 0
