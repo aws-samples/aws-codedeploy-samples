@@ -373,15 +373,30 @@ get_elb_list() {
         --instance-ids $instance_id \
         --query AutoScalingInstances[*].AutoScalingGroupName \
         --output text | sed -e $'s/\t/ /g')
-    
-    local elb_list=$($AWS_CLI autoscaling describe-auto-scaling-groups \
-        --auto-scaling-group-names $asg_name \
-        --query AutoScalingGroups[*].LoadBalancerNames \
-        --output text | sed -e $'s/\t/ /g')
+    local elb_list=""
+
+    if [ -z "$asg_name" ]; then
+        msg "Instance is not part of an ASG. Looking up from ELB."
+        local all_balancers=$($AWS_CLI elb describe-load-balancers \
+            --query LoadBalancerDescriptions[*].LoadBalancerName \
+            --output text | sed -e $'s/\t/ /g')
+        for elb in $all_balancers; do
+            local instance_health
+            instance_health=$(get_instance_health_elb $instance_id $elb)
+            if [ $? == 0 ]; then
+                elb_list="$elb_list $elb"
+            fi
+        done
+    else
+        elb_list=$($AWS_CLI autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names $asg_name \
+            --query AutoScalingGroups[*].LoadBalancerNames \
+            --output text | sed -e $'s/\t/ /g')
+    fi
 
     if [ -z "$elb_list" ]; then
         return 1
-    else 
+    else
         msg "Got load balancer list of: $elb_list"
         ELB_LIST=$elb_list
         return 0
