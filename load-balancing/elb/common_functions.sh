@@ -68,7 +68,7 @@ autoscaling_group_name() {
     elif [ "$autoscaling_name" == "None" ]; then
         echo ""
     else
-        echo $autoscaling_name
+        echo "${autoscaling_name}"
     fi
 
     return 0
@@ -82,7 +82,7 @@ autoscaling_group_name() {
 #   Returns 0 if the instance was successfully moved to standby. Non-zero otherwise.
 autoscaling_enter_standby() {
     local instance_id=$1
-    local asg_name=$2
+    local asg_name=${2}
 
     msg "Checking if this instance has already been moved in the Standby state"
     local instance_state=$(get_instance_state_asg $instance_id)
@@ -101,9 +101,9 @@ autoscaling_enter_standby() {
         return 0
     fi
 
-    msg "Checking to see if ASG $asg_name will let us decrease desired capacity"
+    msg "Checking to see if ASG ${asg_name} will let us decrease desired capacity"
     local min_desired=$($AWS_CLI autoscaling describe-auto-scaling-groups \
-        --auto-scaling-group-name $asg_name \
+        --auto-scaling-group-name "${asg_name}" \
         --query 'AutoScalingGroups[0].[MinSize, DesiredCapacity]' \
         --output text)
 
@@ -111,19 +111,19 @@ autoscaling_enter_standby() {
     local desired_cap=$(echo $min_desired | awk '{print $2}')
 
     if [ -z "$min_cap" -o -z "$desired_cap" ]; then
-        msg "Unable to determine minimum and desired capacity for ASG $asg_name."
+        msg "Unable to determine minimum and desired capacity for ASG ${asg_name}."
         msg "Attempting to put this instance into standby regardless."
     elif [ $min_cap == $desired_cap -a $min_cap -gt 0 ]; then
         local new_min=$(($min_cap - 1))
-        msg "Decrementing ASG $asg_name's minimum size to $new_min"
+        msg "Decrementing ASG ${asg_name}'s minimum size to $new_min"
         msg $($AWS_CLI autoscaling update-auto-scaling-group \
-            --auto-scaling-group-name $asg_name \
+            --auto-scaling-group-name "${asg_name}" \
             --min-size $new_min)
         if [ $? != 0 ]; then
-            msg "Failed to reduce ASG $asg_name's minimum size to $new_min. Cannot put this instance into Standby."
+            msg "Failed to reduce ASG ${asg_name}'s minimum size to $new_min. Cannot put this instance into Standby."
             return 1
         else
-            msg "ASG $asg_name's minimum size has been decremented, creating flag file /tmp/asgmindecremented"
+            msg "ASG ${asg_name}'s minimum size has been decremented, creating flag file /tmp/asgmindecremented"
             # Create a "flag" file to denote that the ASG min has been decremented
             touch /tmp/asgmindecremented
         fi
@@ -132,10 +132,10 @@ autoscaling_enter_standby() {
     msg "Putting instance $instance_id into Standby"
     $AWS_CLI autoscaling enter-standby \
         --instance-ids $instance_id \
-        --auto-scaling-group-name $asg_name \
+        --auto-scaling-group-name "${asg_name}" \
         --should-decrement-desired-capacity
     if [ $? != 0 ]; then
-        msg "Failed to put instance $instance_id into Standby for ASG $asg_name."
+        msg "Failed to put instance $instance_id into Standby for ASG ${asg_name}."
         return 1
     fi
 
@@ -156,7 +156,7 @@ autoscaling_enter_standby() {
 #   successful.
 autoscaling_exit_standby() {
     local instance_id=$1
-    local asg_name=$2
+    local asg_name=${2}
 
     msg "Checking if this instance has already been moved out of Standby state"
     local instance_state=$(get_instance_state_asg $instance_id)
@@ -178,9 +178,9 @@ autoscaling_exit_standby() {
     msg "Moving instance $instance_id out of Standby"
     $AWS_CLI autoscaling exit-standby \
         --instance-ids $instance_id \
-        --auto-scaling-group-name $asg_name
+        --auto-scaling-group-name "${asg_name}"
     if [ $? != 0 ]; then
-        msg "Failed to put instance $instance_id back into InService for ASG $asg_name."
+        msg "Failed to put instance $instance_id back into InService for ASG ${asg_name}."
         return 1
     fi
 
@@ -194,22 +194,22 @@ autoscaling_exit_standby() {
     
     if [ -a /tmp/asgmindecremented ]; then
         local min_desired=$($AWS_CLI autoscaling describe-auto-scaling-groups \
-            --auto-scaling-group-name $asg_name \
+            --auto-scaling-group-name "${asg_name}" \
             --query 'AutoScalingGroups[0].[MinSize, DesiredCapacity]' \
             --output text)
 
         local min_cap=$(echo $min_desired | awk '{print $1}')
 
         local new_min=$(($min_cap + 1))
-        msg "Incrementing ASG $asg_name's minimum size to $new_min"
+        msg "Incrementing ASG ${asg_name}'s minimum size to $new_min"
         msg $($AWS_CLI autoscaling update-auto-scaling-group \
-            --auto-scaling-group-name $asg_name \
+            --auto-scaling-group-name "${asg_name}" \
             --min-size $new_min)
         if [ $? != 0 ]; then
-            msg "Failed to increase ASG $asg_name's minimum size to $new_min."
+            msg "Failed to increase ASG ${asg_name}'s minimum size to $new_min."
             return 1
         else
-            msg "Successfully incremented ASG $asg_name's minimum size"
+            msg "Successfully incremented ASG ${asg_name}'s minimum size"
             msg "Removing /tmp/asgmindecremented flag file"
             rm -f /tmp/asgmindecremented
         fi
@@ -375,7 +375,7 @@ get_elb_list() {
         --output text | sed -e $'s/\t/ /g')
     local elb_list=""
 
-    if [ -z "$asg_name" ]; then
+    if [ -z "${asg_name}" ]; then
         msg "Instance is not part of an ASG. Looking up from ELB."
         local all_balancers=$($AWS_CLI elb describe-load-balancers \
             --query LoadBalancerDescriptions[*].LoadBalancerName \
@@ -389,7 +389,7 @@ get_elb_list() {
         done
     else
         elb_list=$($AWS_CLI autoscaling describe-auto-scaling-groups \
-            --auto-scaling-group-names $asg_name \
+            --auto-scaling-group-names "${asg_name}" \
             --query AutoScalingGroups[*].LoadBalancerNames \
             --output text | sed -e $'s/\t/ /g')
     fi
