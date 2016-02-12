@@ -101,6 +101,14 @@ autoscaling_enter_standby() {
         return 0
     fi
 
+    msg "Suspending AZRebalance process for ASG ${asg_name}"
+    $AWS_CLI autoscaling suspend-processes \
+        --auto-scaling-group-name "${asg_name}" \
+        --scaling-processes AZRebalance
+    if [ $? != 0 ]; then
+        msg "Failed to suspend the AZRebalance process for ASG ${asg_name}, but continuing regardless. This may cause issues."
+    fi
+
     msg "Checking to see if ASG ${asg_name} will let us decrease desired capacity"
     local min_desired=$($AWS_CLI autoscaling describe-auto-scaling-groups \
         --auto-scaling-group-name "${asg_name}" \
@@ -215,6 +223,14 @@ autoscaling_exit_standby() {
         fi
     else
         msg "Auto scaling group was not decremented previously, not incrementing min value"
+    fi
+
+    msg "Resuming AZRebalance process for ASG ${asg_name}"
+    $AWS_CLI autoscaling resume-processes \
+        --auto-scaling-group-name "${asg_name}" \
+        --scaling-processes AZRebalance
+    if [ $? != 0 ]; then
+        msg "Failed to resume the AZRebalance process for ASG ${asg_name}, but continuing regardless. This may cause issues."
     fi
 
     return 0
