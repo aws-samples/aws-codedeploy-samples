@@ -242,14 +242,38 @@ get_instance_state_asg() {
 
 reset_waiter_timeout() {
     local elb=$1
+    local state_name=$2
 
-    local health_check_values=$($AWS_CLI elb describe-load-balancers \
-        --load-balancer-name $elb \
-        --query 'LoadBalancerDescriptions[0].HealthCheck.[HealthyThreshold, Interval]' \
-        --output text)
+    if [ "$state_name" == "InService" ]; then
 
-    WAITER_ATTEMPTS=$(echo $health_check_values | awk '{print $1}')
-    WAITER_INTERVAL=$(echo $health_check_values | awk '{print $2}')
+        # Wait for a health check to succeed
+        local timeout=$($AWS_CLI elb describe-load-balancers \
+            --load-balancer-name $elb \
+            --query 'LoadBalancerDescriptions[0].HealthCheck.Timeout')
+
+    elif [ "$state_name" == "OutOfService" ]; then
+
+        # If connection draining is enabled, wait for connections to drain
+        local draining_values=$($AWS_CLI elb describe-load-balancer-attributes \
+            --load-balancer-name $elb \
+            --query 'LoadBalancerAttributes.ConnectionDraining.[Enabled,Timeout]' \
+            --output text)
+        local draining_enabled=$(echo $draining_values | awk '{print $1}')
+        local timeout=$(echo $draining_values | awk '{print $2}')
+
+        if [ "$draining_enabled" != "True" ]; then
+            timeout=0
+        fi
+
+    else
+        msg "Unknown state name, '$state_name'";
+        return 1;
+    fi
+
+    # Base register/deregister action may take up to about 30 seconds
+    timeout=$((timeout + 30))
+
+    WAITER_ATTEMPTS=$((timeout / WAITER_INTERVAL))
 }
 
 # Usage: wait_for_state <service> <EC2 instance ID> <state name> [ELB name]
@@ -257,7 +281,7 @@ reset_waiter_timeout() {
 #    Waits for the state of <EC2 instance ID> to be in <state> as seen by <service>. Returns 0 if
 #    it successfully made it to that state; non-zero if not. By default, checks $WAITER_ATTEMPTS
 #    times, every $WAITER_INTERVAL seconds. If giving an [ELB name] to check under, these are reset
-#    to that ELB's HealthThreshold and Interval values.
+#    to that ELB's timeout values.
 wait_for_state() {
     local service=$1
     local instance_id=$2
@@ -267,7 +291,10 @@ wait_for_state() {
     local instance_state_cmd
     if [ "$service" == "elb" ]; then
         instance_state_cmd="get_instance_health_elb $instance_id $elb"
-        reset_waiter_timeout $elb
+        reset_waiter_timeout $elb $state_name
+        if [ $? != 0 ]; then
+            error_exit "Failed resetting waiter timeout for $elb"
+        fi
     elif [ "$service" == "autoscaling" ]; then
         instance_state_cmd="get_instance_state_asg $instance_id"
     else
