@@ -101,12 +101,23 @@ autoscaling_enter_standby() {
         return 0
     fi
 
-    msg "Suspending AZRebalance process for ASG ${asg_name}"
-    $AWS_CLI autoscaling suspend-processes \
+    msg "Checking to see if ASG ${asg_name} had AZRebalance process suspended previously"
+    local azrebalance_suspended=$($AWS_CLI autoscaling describe-auto-scaling-groups \
         --auto-scaling-group-name "${asg_name}" \
-        --scaling-processes AZRebalance
-    if [ $? != 0 ]; then
-        msg "Failed to suspend the AZRebalance process for ASG ${asg_name}, but continuing regardless. This may cause issues."
+        --query 'AutoScalingGroups[].SuspendedProcesses' \
+        --output text | grep -c 'AZRebalance')
+    if [ $azrebalance_suspended -eq 1 ]; then
+        msg "ASG ${asg_name} had AZRebalance suspended, creating flag file /tmp/azrebalanced"
+        # Create a "flag" file to denote that the ASG had AZRebalance enabled
+        touch /tmp/azrebalanced
+    else
+        msg "ASG ${asg_name} didn't have AZRebalance suspended, suspending"
+        $AWS_CLI autoscaling suspend-processes \
+            --auto-scaling-group-name "${asg_name}" \
+            --scaling-processes AZRebalance
+        if [ $? != 0 ]; then
+            msg "Failed to suspend the AZRebalance process for ASG ${asg_name}, but continuing regardless. This may cause issues."
+        fi
     fi
 
     msg "Checking to see if ASG ${asg_name} will let us decrease desired capacity"
@@ -225,12 +236,18 @@ autoscaling_exit_standby() {
         msg "Auto scaling group was not decremented previously, not incrementing min value"
     fi
 
-    msg "Resuming AZRebalance process for ASG ${asg_name}"
-    $AWS_CLI autoscaling resume-processes \
-        --auto-scaling-group-name "${asg_name}" \
-        --scaling-processes AZRebalance
-    if [ $? != 0 ]; then
-        msg "Failed to resume the AZRebalance process for ASG ${asg_name}, but continuing regardless. This may cause issues."
+    if [ -a /tmp/azrebalanced ]; then
+        msg "ASG ${asg_name} had AZRebalance suspended previously, leaving it suspended"
+        msg "Removing /tmp/azrebalanced flag file"
+        rm -f /tmp/azrebalanced
+    else
+        msg "Resuming AZRebalance process for ASG ${asg_name}"
+        $AWS_CLI autoscaling resume-processes \
+            --auto-scaling-group-name "${asg_name}" \
+            --scaling-processes AZRebalance
+        if [ $? != 0 ]; then
+            msg "Failed to resume the AZRebalance process for ASG ${asg_name}, but continuing regardless. This may cause issues."
+        fi
     fi
 
     return 0
