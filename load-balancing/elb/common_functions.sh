@@ -116,7 +116,8 @@ autoscaling_enter_standby() {
             --auto-scaling-group-name "${asg_name}" \
             --scaling-processes AZRebalance
         if [ $? != 0 ]; then
-            msg "Failed to suspend the AZRebalance process for ASG ${asg_name}, but continuing regardless. This may cause issues."
+            msg "Failed to suspend the AZRebalance process for ASG ${asg_name}. Aborting as this may cause issues."
+            return 1
         fi
     fi
 
@@ -246,7 +247,8 @@ autoscaling_exit_standby() {
             --auto-scaling-group-name "${asg_name}" \
             --scaling-processes AZRebalance
         if [ $? != 0 ]; then
-            msg "Failed to resume the AZRebalance process for ASG ${asg_name}, but continuing regardless. This may cause issues."
+            msg "Failed to resume the AZRebalance process for ASG ${asg_name}. This may cause issues!"
+            return 1
         fi
     fi
 
