@@ -404,16 +404,9 @@ get_elb_list() {
 
     if [ -z "${asg_name}" ]; then
         msg "Instance is not part of an ASG. Looking up from ELB."
-        local all_balancers=$($AWS_CLI elb describe-load-balancers \
-            --query LoadBalancerDescriptions[*].LoadBalancerName \
-            --output text | sed -e $'s/\t/ /g')
-        for elb in $all_balancers; do
-            local instance_health
-            instance_health=$(get_instance_health_elb $instance_id $elb)
-            if [ $? == 0 ]; then
-                elb_list="$elb_list $elb"
-            fi
-        done
+        elb_list=$($AWS_CLI elb describe-load-balancers \
+            --query 'LoadBalancerDescriptions[].[LoadBalancerName,Instances[].InstanceId]' \
+            --output text | grep $instance_id | awk '{ORS=" ";print $1}')
     else
         elb_list=$($AWS_CLI autoscaling describe-auto-scaling-groups \
             --auto-scaling-group-names "${asg_name}" \
