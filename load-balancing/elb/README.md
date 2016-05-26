@@ -29,6 +29,8 @@ in the CLI's user guide.
     autoscaling:EnterStandby
     autoscaling:ExitStandby
     autoscaling:UpdateAutoScalingGroup
+    autoscaling:SuspendProcesses
+    autoscaling:ResumeProcesses
 ```
 
 Note: the AWS CodeDeploy Agent requires that an instance profile be attached to all instances that
