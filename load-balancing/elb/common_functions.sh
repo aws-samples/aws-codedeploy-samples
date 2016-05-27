@@ -93,6 +93,18 @@ remove_flagfile() {
   fi
 }
 
+# Usage: finish_msg
+#
+#   Prints some finishing statistics
+finish_msg() {
+  msg "Finished $(basename $0) at $(/bin/date "+%F %T")"
+  
+  end_sec=$(/bin/date +%s.%N)
+  elapsed_seconds=$(echo "$end_sec - $start_sec" | /usr/bin/bc)
+  
+  msg "Elapsed time: $elapsed_seconds"
+}
+
 # Usage: autoscaling_group_name <EC2 instance ID>
 #
 #    Prints to STDOUT the name of the AutoScaling group this instance is a part of and returns 0. If

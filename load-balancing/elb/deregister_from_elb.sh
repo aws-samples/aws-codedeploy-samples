@@ -44,6 +44,7 @@ if [ $? == 0 -a -n "${asg}" ]; then
         error_exit "Failed to move instance into standby"
     else
         msg "Instance is in standby"
+        finish_msg
         exit 0
     fi
 fi
@@ -81,9 +82,4 @@ for elb in $ELB_LIST; do
     fi
 done
 
-msg "Finished $(basename $0) at $(/bin/date "+%F %T")"
-
-end_sec=$(/bin/date +%s.%N)
-elapsed_seconds=$(echo "$end_sec - $start_sec" | /usr/bin/bc)
-
-msg "Elapsed time: $elapsed_seconds"
+finish_msg
