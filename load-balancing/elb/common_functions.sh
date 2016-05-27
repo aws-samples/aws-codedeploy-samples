@@ -57,7 +57,7 @@ AWS_CLI="aws --region $(get_instance_region)"
 #   Writes <flag> to FLAGFILE
 set_flag() {
   if echo "$1=true" >> $FLAGFILE; then
-    msg "$1 flag written to $FLAGFILE"
+    #msg "$1 flag written to $FLAGFILE"
     return 0
   else
     error_exit "$1 flag NOT written to $FLAGFILE"
@@ -70,15 +70,77 @@ set_flag() {
 get_flag() {
   if [ -e $FLAGFILE ]; then
     if grep "$1=true" $FLAGFILE > /dev/null; then
-      msg "$1 flag found in $FLAGFILE"
+      #msg "$1 flag found in $FLAGFILE"
       return 0
     else
-      msg "$1 flag NOT found in $FLAGFILE"
+      #msg "$1 flag NOT found in $FLAGFILE"
       return 1
     fi
   else
-    msg "Flagfile $FLAGFILE doesn't exist."
+    # FLAGFILE doesn't exist
     return 1
+  fi
+}
+
+# Usage: check_suspended_processes
+#
+#   Checks processes suspended on the ASG before beginning and store them in
+#   the FLAGFILE to avoid resuming afterwards. Also abort if Launch process
+#   is suspended.
+check_suspended_processes() {
+  # Get suspended processes in an array
+  local suspended=($($AWS_CLI autoscaling describe-auto-scaling-groups \
+      --auto-scaling-group-name "${asg_name}" \
+      --query 'AutoScalingGroups[].SuspendedProcesses' \
+      --output text | awk '{printf $1" "}'))
+
+  msg "This processes were suspended on the ASG before starting ${suspended[*]}"
+
+  # If "Launch" process is suspended abort because we will not be able to recover from StandBy
+  if [[ "${suspended[@]}" =~ "Launch" ]]; then
+    error_exit "Launch process of AutoScaling is suspended which will not allow us to recover the instance from StandBy. Aborting."
+  fi
+
+  for process in ${suspended[@]}; do
+    set_flag $process
+  done
+}
+
+# Usage: suspend_processes
+#
+#   Suspend processes known to cause problems during deployments.
+#   The API call is idempotent so it doesn't matter if any were previously suspended.
+suspend_processes() {
+  local -a processes=(AZRebalance AlarmNotification ScheduledActions ReplaceUnhealthy)
+
+  msg "Suspending ${processes[*]} processes"
+  $AWS_CLI autoscaling suspend-processes \
+    --auto-scaling-group-name "${asg_name}" \
+    --scaling-processes ${processes[@]}
+  if [ $? != 0 ]; then
+    error_exit "Failed to suspend ${processes[*]} processes for ASG ${asg_name}. Aborting as this may cause issues."
+  fi
+}
+
+# Usage: resume_processes
+#
+#   Resume processes suspended, except for the one suspended before deployment.
+resume_processes() {
+  local -a processes=(AZRebalance AlarmNotification ScheduledActions ReplaceUnhealthy)
+  local -a to_resume
+
+  for p in ${processes[@]}; do
+    if ! get_flag "$p"; then
+      to_resume=("${to_resume[@]}" "$p")
+    fi
+  done
+
+  msg "Resuming ${to_resume[*]} processes"
+  $AWS_CLI autoscaling resume-processes \
+    --auto-scaling-group-name "${asg_name}" \
+    --scaling-processes ${to_resume[@]}
+  if [ $? != 0 ]; then
+    error_exit "Failed to resume ${to_resume[*]} processes for ASG ${asg_name}. Aborting as this may cause issues."
   fi
 }
 
@@ -156,6 +218,12 @@ autoscaling_enter_standby() {
         msg "Instance is Pending:Wait; nothing to do."
         return 0
     fi
+
+    msg "Checking ASG ${asg_name} suspended processes"
+    check_suspended_processes
+
+    # Suspend troublesome processes while deploying
+    suspend_processes
 
     msg "Checking to see if ASG ${asg_name} will let us decrease desired capacity"
     local min_desired=$($AWS_CLI autoscaling describe-auto-scaling-groups \
@@ -272,6 +340,10 @@ autoscaling_exit_standby() {
         msg "Auto scaling group was not decremented previously, not incrementing min value"
     fi
 
+    # Resume processes, except for the ones suspended before deployment
+    resume_processes
+
+    # Clean up the FLAGFILE
     remove_flagfile
     return 0
 }
