@@ -34,6 +34,9 @@ WAITER_INTERVAL=1
 # AutoScaling Standby features at minimum require this version to work.
 MIN_CLI_VERSION='1.3.25'
 
+# Create a flagfile for each deployment
+FLAGFILE="/tmp/asg_codedeploy_flags-$DEPLOYMENT_GROUP_ID-$DEPLOYMENT_ID"
+
 # Usage: get_instance_region
 #
 #   Writes to STDOUT the AWS region as known by the local instance.
@@ -48,6 +51,47 @@ get_instance_region() {
 }
 
 AWS_CLI="aws --region $(get_instance_region)"
+
+# Usage: set_flag <flag>
+#
+#   Writes <flag> to FLAGFILE
+set_flag() {
+  if echo "$1=true" >> $FLAGFILE; then
+    msg "$1 flag written to $FLAGFILE"
+    return 0
+  else
+    error_exit "$1 flag NOT written to $FLAGFILE"
+  fi
+}
+
+# Usage: get_flag <flag>
+#
+#   Checks if <flag> is true in FLAGFILE
+get_flag() {
+  if [ -e $FLAGFILE ]; then
+    if grep "$1=true" $FLAGFILE > /dev/null; then
+      msg "$1 flag found in $FLAGFILE"
+      return 0
+    else
+      msg "$1 flag NOT found in $FLAGFILE"
+      return 1
+    fi
+  else
+    msg "Flagfile $FLAGFILE doesn't exist."
+    return 1
+  fi
+}
+
+# Usage: remove_flagfile
+#
+#   Removes FLAGFILE
+remove_flagfile() {
+  if rm -f $FLAGFILE; then
+      msg "Successfully removed flagfile $FLAGFILE"
+  else
+      error_exit "Failed to remove flagfile $FLAGFILE."
+  fi
+}
 
 # Usage: autoscaling_group_name <EC2 instance ID>
 #
@@ -123,9 +167,9 @@ autoscaling_enter_standby() {
             msg "Failed to reduce ASG ${asg_name}'s minimum size to $new_min. Cannot put this instance into Standby."
             return 1
         else
-            msg "ASG ${asg_name}'s minimum size has been decremented, creating flag file /tmp/asgmindecremented"
-            # Create a "flag" file to denote that the ASG min has been decremented
-            touch /tmp/asgmindecremented
+            msg "ASG ${asg_name}'s minimum size has been decremented, creating flag in file $FLAGFILE"
+            # Create a "flag" denote that the ASG min has been decremented
+            set_flag asgmindecremented
         fi
     fi
 
@@ -192,7 +236,7 @@ autoscaling_exit_standby() {
         return 1
     fi
     
-    if [ -a /tmp/asgmindecremented ]; then
+    if get_flag asgmindecremented; then
         local min_desired=$($AWS_CLI autoscaling describe-auto-scaling-groups \
             --auto-scaling-group-name "${asg_name}" \
             --query 'AutoScalingGroups[0].[MinSize, DesiredCapacity]' \
@@ -207,16 +251,16 @@ autoscaling_exit_standby() {
             --min-size $new_min)
         if [ $? != 0 ]; then
             msg "Failed to increase ASG ${asg_name}'s minimum size to $new_min."
+            remove_flagfile
             return 1
         else
             msg "Successfully incremented ASG ${asg_name}'s minimum size"
-            msg "Removing /tmp/asgmindecremented flag file"
-            rm -f /tmp/asgmindecremented
         fi
     else
         msg "Auto scaling group was not decremented previously, not incrementing min value"
     fi
 
+    remove_flagfile
     return 0
 }
 
