@@ -94,11 +94,15 @@ check_suspended_processes() {
       --query 'AutoScalingGroups[].SuspendedProcesses' \
       --output text | awk '{printf $1" "}'))
 
-  msg "This processes were suspended on the ASG before starting ${suspended[*]}"
+  if [ ${#suspended[@]} -eq 0 ]; then
+    msg "No processes were suspended on the ASG before starting."
+  else
+    msg "This processes were suspended on the ASG before starting: ${suspended[*]}"
+  fi
 
   # If "Launch" process is suspended abort because we will not be able to recover from StandBy
   if [[ "${suspended[@]}" =~ "Launch" ]]; then
-    error_exit "Launch process of AutoScaling is suspended which will not allow us to recover the instance from StandBy. Aborting."
+    error_exit "'Launch' process of AutoScaling is suspended which will not allow us to recover the instance from StandBy. Aborting."
   fi
 
   for process in ${suspended[@]}; do
