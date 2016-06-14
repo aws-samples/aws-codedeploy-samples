@@ -1,26 +1,15 @@
 # ELB and ASG lifecycle event scripts
 
-Often when running a web service, you'll have your instances behind a load balancer. But when
-deploying new code to these instances, you don't want the load balancer to continue sending customer
-traffic to an instance while the deployment is in progress. Lifecycle event scripts give you the
-ability to integrate your AWS CodeDeploy deployments with instances that are behind an Elastic Load
-Balancer or in an Auto Scaling group. Simply set the name (or names) of the Elastic Load Balancer
-your instances are a part of, set the scripts in the appropriate lifecycle events, and the scripts
-will take care of deregistering the instance, waiting for connection draining, and re-registering
-after the deployment finishes.
+Often when running a web service, you'll have your instances behind a load balancer. But when deploying new code to these instances, you don't want the load balancer to continue sending customer traffic to an instance while the deployment is in progress. Lifecycle event scripts give you the ability to integrate your AWS CodeDeploy deployments with instances that are behind an Elastic Load Balancer or in an Auto Scaling group. Simply set the name (or names) of the Elastic Load Balancer your instances are a part of, set the scripts in the appropriate lifecycle events, and the scripts will take care of deregistering the instance, waiting for connection draining, and re-registering after the deployment finishes.
 
 *Please note that this scripts will suspend some AutoScaling processes (AZRebalance, AlarmNotification, ScheduledActions and ReplaceUnhealthy) while deploying, in order to avoid wrong interactions.*
 
 ## Requirements
 
-The register and deregister scripts have a couple of dependencies in order to properly interact with
-Elastic Load Balancing and AutoScaling:
+The register and deregister scripts have a couple of dependencies in order to properly interact with Elastic Load Balancing and AutoScaling:
 
-1. The [AWS CLI](http://aws.amazon.com/cli/). In order to take advantage of
-AutoScaling's Standby feature, the CLI must be at least version 1.3.25. If you
-have Python and PIP already installed, the CLI can simply be installed with `pip
-install awscli`. Otherwise, follow the [installation instructions](http://docs.aws.amazon.com/cli/latest/userguide/installing.html)
-in the CLI's user guide.
+1. The [AWS CLI](http://aws.amazon.com/cli/). In order to take advantage of AutoScaling's Standby feature, the CLI must be at least version 1.3.25. If you have Python and PIP already installed, the CLI can simply be installed with `pip install awscli`. Otherwise, follow the [installation instructions](http://docs.aws.amazon.com/cli/latest/userguide/installing.html) in the CLI's user guide.
+
 2. An instance profile with a policy that allows, at minimum, the following actions:
 
         elasticloadbalancing:Describe*
@@ -33,10 +22,8 @@ in the CLI's user guide.
         autoscaling:SuspendProcesses
         autoscaling:ResumeProcesses
 
-    **Note**: the AWS CodeDeploy Agent requires that an instance profile be attached to all instances that
-    are to participate in AWS CodeDeploy deployments. For more information on creating an instance
-    profile for AWS CodeDeploy, see the [Create an IAM Instance Profile for Your Amazon EC2 Instances](http://docs.aws.amazon.com/codedeploy/latest/userguide/how-to-create-iam-instance-profile.html)
-    topic in the documentation.
+    **Note**: the AWS CodeDeploy Agent requires that an instance profile be attached to all instances that are to participate in AWS CodeDeploy deployments. For more information on creating an instance profile for AWS CodeDeploy, see the [Create an IAM Instance Profile for Your Amazon EC2 Instances](http://docs.aws.amazon.com/codedeploy/latest/userguide/how-to-create-iam-instance-profile.html) topic in the documentation.
+
 3. All instances are assumed to already have the AWS CodeDeploy Agent installed.
 
 ## Installing the Scripts
@@ -46,8 +33,7 @@ To use these scripts in your own application:
 1. Install the AWS CLI on all your instances.
 2. Update the policies on the EC2 instance profile to allow the above actions.
 3. Copy the `.sh` files in this directory into your application source.
-4. Edit your application's `appspec.yml` to run `deregister_from_elb.sh` on the ApplicationStop event,
-and `register_with_elb.sh` on the ApplicationStart event.
-5. Edit `common_functions.sh` to set `ELB_LIST` to contain the name(s) of the Elastic Load
-Balancer(s) your deployment group is a part of. Make sure the entries in ELB_LIST are separated by space.
+4. Edit your application's `appspec.yml` to run `deregister_from_elb.sh` on the ApplicationStop event, and `register_with_elb.sh` on the ApplicationStart event.
+5. If your instance is not in an Auto Scaling Group, edit `common_functions.sh` to set `ELB_LIST` to contain the name(s) of the Elastic Load Balancer(s) your deployment group is a part of. Make sure the entries in ELB_LIST are separated by space.
+Alternatively, you can set `ELB_LIST` to `_all_` to automatically use all load balancers the instance is registered to, or `_any_` to get the same behaviour as `_all_` but without failing your deployments if the instance is not part of any ASG or ELB. This is more flexible in heterogeneous tag-based Deployment Groups.
 6. Deploy!
