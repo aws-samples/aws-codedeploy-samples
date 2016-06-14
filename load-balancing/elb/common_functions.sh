@@ -14,7 +14,10 @@
 # permissions and limitations under the License.
 
 # ELB_LIST defines which Elastic Load Balancers this instance should be part of.
-# The elements in ELB_LIST should be seperated by space.
+# The elements in ELB_LIST should be separated by space. Safe default is "".
+# Set to "_all_" to automatically find all load balancers the instance is registered to.
+# Set to "_any_" will work as "_all_" but will not fail if instance is not attached to
+# any ASG or ELB, giving flexibility.
 ELB_LIST=""
 
 # Under normal circumstances, you shouldn't need to change anything below this line.
@@ -52,30 +55,25 @@ get_instance_region() {
 
 AWS_CLI="aws --region $(get_instance_region)"
 
-# Usage: set_flag <flag>
+# Usage: set_flag <flag> <value>
 #
-#   Writes <flag> to FLAGFILE
+#   Writes <flag>=<value> to FLAGFILE
 set_flag() {
-  if echo "$1=true" >> $FLAGFILE; then
-    #msg "$1 flag written to $FLAGFILE"
+  if echo "$1=$2" >> $FLAGFILE; then
     return 0
   else
-    error_exit "$1 flag NOT written to $FLAGFILE"
+    error_exit "Unable to write flag \"$1=$2\" to $FLAGFILE"
   fi
 }
 
 # Usage: get_flag <flag>
 #
-#   Checks if <flag> is true in FLAGFILE
+#   Checks for <flag> in FLAGFILE. Echoes it's value and returns 0 on success or non-zero if it fails to read the file.
 get_flag() {
-  if [ -e $FLAGFILE ]; then
-    if grep "$1=true" $FLAGFILE > /dev/null; then
-      #msg "$1 flag found in $FLAGFILE"
-      return 0
-    else
-      #msg "$1 flag NOT found in $FLAGFILE"
-      return 1
-    fi
+  if [ -r $FLAGFILE ]; then
+    local result=$(awk -F= -v flag="$1" '{if ( $1 == flag ) {print $2}}' $FLAGFILE)
+    echo "${result}"
+    return 0
   else
     # FLAGFILE doesn't exist
     return 1
@@ -100,13 +98,13 @@ check_suspended_processes() {
     msg "This processes were suspended on the ASG before starting: ${suspended[*]}"
   fi
 
-  # If "Launch" process is suspended abort because we will not be able to recover from StandBy
+  # If "Launch" process is suspended abort because we will not be able to recover from StandBy. Note the "[[ ... =~" bashism.
   if [[ "${suspended[@]}" =~ "Launch" ]]; then
     error_exit "'Launch' process of AutoScaling is suspended which will not allow us to recover the instance from StandBy. Aborting."
   fi
 
   for process in ${suspended[@]}; do
-    set_flag $process
+    set_flag "$process" "true"
   done
 }
 
@@ -134,7 +132,9 @@ resume_processes() {
   local -a to_resume
 
   for p in ${processes[@]}; do
-    if ! get_flag "$p"; then
+    if ! local tmp_flag_value=$(get_flag "$p"); then
+        error_exit "$FLAGFILE doesn't exist or is unreadable"
+    elif [ ! "$tmp_flag_value" = "true" ] ; then
       to_resume=("${to_resume[@]}" "$p")
     fi
   done
@@ -150,12 +150,13 @@ resume_processes() {
 
 # Usage: remove_flagfile
 #
-#   Removes FLAGFILE
+#   Removes FLAGFILE. Returns non-zero if failure.
 remove_flagfile() {
-  if rm -f $FLAGFILE; then
+  if rm $FLAGFILE; then
       msg "Successfully removed flagfile $FLAGFILE"
+      return 0
   else
-      error_exit "Failed to remove flagfile $FLAGFILE."
+      msg "WARNING: Failed to remove flagfile $FLAGFILE."
   fi
 }
 
@@ -166,7 +167,7 @@ finish_msg() {
   msg "Finished $(basename $0) at $(/bin/date "+%F %T")"
   
   end_sec=$(/bin/date +%s.%N)
-  elapsed_seconds=$(echo "$end_sec - $start_sec" | /usr/bin/bc)
+  elapsed_seconds=$(echo "$end_sec" "$start_sec" | awk '{ print $1 - $2 }')
   
   msg "Elapsed time: $elapsed_seconds"
 }
@@ -241,6 +242,7 @@ autoscaling_enter_standby() {
     if [ -z "$min_cap" -o -z "$desired_cap" ]; then
         msg "Unable to determine minimum and desired capacity for ASG ${asg_name}."
         msg "Attempting to put this instance into standby regardless."
+        set_flag "asgmindecremented" "false"
     elif [ $min_cap == $desired_cap -a $min_cap -gt 0 ]; then
         local new_min=$(($min_cap - 1))
         msg "Decrementing ASG ${asg_name}'s minimum size to $new_min"
@@ -253,8 +255,11 @@ autoscaling_enter_standby() {
         else
             msg "ASG ${asg_name}'s minimum size has been decremented, creating flag in file $FLAGFILE"
             # Create a "flag" denote that the ASG min has been decremented
-            set_flag asgmindecremented
+            set_flag "asgmindecremented" "true"
         fi
+    else
+        msg "No need to decrement ASG ${asg_name}'s minimum size"
+        set_flag "asgmindecremented" "false"
     fi
 
     msg "Putting instance $instance_id into Standby"
@@ -320,7 +325,9 @@ autoscaling_exit_standby() {
         return 1
     fi
     
-    if get_flag asgmindecremented; then
+    if ! local tmp_flag_value=$(get_flag "asgmindecremented"); then
+        error_exit "$FLAGFILE doesn't exist or is unreadable"
+    elif [ "$tmp_flag_value" = "true" ]; then
         local min_desired=$($AWS_CLI autoscaling describe-auto-scaling-groups \
             --auto-scaling-group-name "${asg_name}" \
             --query 'AutoScalingGroups[0].[MinSize, DesiredCapacity]' \
@@ -372,6 +379,9 @@ get_instance_state_asg() {
     fi
 }
 
+# Usage: reset_waiter_timeout <ELB name> <state name>
+#
+#    Resets the timeout value to account for the ELB timeout and also connection draining.
 reset_waiter_timeout() {
     local elb=$1
     local state_name=$2
@@ -528,30 +538,11 @@ validate_elb() {
 get_elb_list() {
     local instance_id=$1
 
-    local asg_name=$($AWS_CLI autoscaling describe-auto-scaling-instances \
-        --instance-ids $instance_id \
-        --query AutoScalingInstances[*].AutoScalingGroupName \
-        --output text | sed -e $'s/\t/ /g')
     local elb_list=""
 
-    if [ -z "${asg_name}" ]; then
-        msg "Instance is not part of an ASG. Looking up from ELB."
-        local all_balancers=$($AWS_CLI elb describe-load-balancers \
-            --query LoadBalancerDescriptions[*].LoadBalancerName \
-            --output text | sed -e $'s/\t/ /g')
-        for elb in $all_balancers; do
-            local instance_health
-            instance_health=$(get_instance_health_elb $instance_id $elb)
-            if [ $? == 0 ]; then
-                elb_list="$elb_list $elb"
-            fi
-        done
-    else
-        elb_list=$($AWS_CLI autoscaling describe-auto-scaling-groups \
-            --auto-scaling-group-names "${asg_name}" \
-            --query AutoScalingGroups[*].LoadBalancerNames \
-            --output text | sed -e $'s/\t/ /g')
-    fi
+    elb_list=$($AWS_CLI elb describe-load-balancers \
+      --query $'LoadBalancerDescriptions[].[join(`,`,Instances[?InstanceId==`'$instance_id'`].InstanceId),LoadBalancerName]' \
+      --output text | grep $instance_id | awk '{ORS=" ";print $2}')
 
     if [ -z "$elb_list" ]; then
         return 1
