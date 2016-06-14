@@ -49,11 +49,27 @@ if [ $? == 0 -a -n "${asg}" ]; then
     fi
 fi
 
-msg "Instance is not part of an ASG, continuing..."
+msg "Instance is not part of an ASG, continuing with ELB"
 
-msg "Checking that user set at least one load balancer"
-if test -z "$ELB_LIST"; then
-    error_exit "Must have at least one load balancer to register to"
+if [ -z "$ELB_LIST" ]; then
+    error_exit "ELB_LIST is empty. Must have at least one load balancer to register to, or \"_all_\", \"_any_\" values."
+elif [ "${ELB_LIST}" = "_all_" ]; then
+    msg "Finding all the ELBs that this instance was previously registered to"
+    if ! ELB_LIST=$(get_flag "ELBs"); then
+      error_exit "$FLAGFILE doesn't exist or is unreadble"
+    elif [ -z $ELB_LIST ]; then
+      error_exit "Couldn't find any. Must have at least one load balancer to register to."
+    fi
+elif [ "${ELB_LIST}" = "_any_" ]; then
+    msg "Finding all the ELBs that this instance was previously registered to"
+    if ! ELB_LIST=$(get_flag "ELBs"); then
+      error_exit "$FLAGFILE doesn't exist or is unreadble"
+    elif [ -z $ELB_LIST ]; then
+        msg "Couldn't find any, but ELB_LIST=any so finishing successfully without registering."
+        remove_flagfile
+        finish_msg
+        exit 0
+    fi
 fi
 
 # Loop through all LBs the user set, and attempt to register this instance to them.
@@ -73,7 +89,7 @@ for elb in $ELB_LIST; do
     fi
 done
 
-# Wait for all Registrations to finish
+# Wait for all registrations to finish
 msg "Waiting for instance to register to its load balancers"
 for elb in $ELB_LIST; do
     wait_for_state "elb" $INSTANCE_ID "InService" $elb
@@ -81,5 +97,7 @@ for elb in $ELB_LIST; do
         error_exit "Failed waiting for $INSTANCE_ID to return to $elb"
     fi
 done
+
+remove_flagfile
 
 finish_msg
