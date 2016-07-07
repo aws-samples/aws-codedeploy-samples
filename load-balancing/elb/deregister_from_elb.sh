@@ -51,6 +51,8 @@ fi
 
 msg "Instance is not part of an ASG, trying with ELB..."
 
+set_flag "dereg" "true"
+
 if [ -z "$ELB_LIST" ]; then
     error_exit "ELB_LIST is empty. Must have at least one load balancer to deregister from, or \"_all_\", \"_any_\" values."
 elif [ "${ELB_LIST}" = "_all_" ]; then

@@ -54,19 +54,31 @@ msg "Instance is not part of an ASG, continuing with ELB"
 if [ -z "$ELB_LIST" ]; then
     error_exit "ELB_LIST is empty. Must have at least one load balancer to register to, or \"_all_\", \"_any_\" values."
 elif [ "${ELB_LIST}" = "_all_" ]; then
-    msg "Finding all the ELBs that this instance was previously registered to"
-    if ! ELB_LIST=$(get_flag "ELBs"); then
-      error_exit "$FLAGFILE doesn't exist or is unreadble"
-    elif [ -z $ELB_LIST ]; then
-      error_exit "Couldn't find any. Must have at least one load balancer to register to."
+    if [ "$(get_flag "dereg")" = "true" ]; then
+        msg "Finding all the ELBs that this instance was previously registered to"
+        if ! ELB_LIST=$(get_flag "ELBs"); then
+          error_exit "$FLAGFILE doesn't exist or is unreadble"
+        elif [ -z $ELB_LIST ]; then
+          error_exit "Couldn't find any. Must have at least one load balancer to register to."
+        fi
+    else
+        msg "Assuming this is the first deployment and ELB_LIST=_all_ so finishing successfully without registering."
+        finish_msg
+        exit 0
     fi
 elif [ "${ELB_LIST}" = "_any_" ]; then
-    msg "Finding all the ELBs that this instance was previously registered to"
-    if ! ELB_LIST=$(get_flag "ELBs"); then
-      error_exit "$FLAGFILE doesn't exist or is unreadble"
-    elif [ -z $ELB_LIST ]; then
-        msg "Couldn't find any, but ELB_LIST=any so finishing successfully without registering."
-        remove_flagfile
+    if [ "$(get_flag "dereg")" = "true" ]; then
+        msg "Finding all the ELBs that this instance was previously registered to"
+        if ! ELB_LIST=$(get_flag "ELBs"); then
+            error_exit "$FLAGFILE doesn't exist or is unreadble"
+        elif [ -z $ELB_LIST ]; then
+            msg "Couldn't find any, but ELB_LIST=_any_ so finishing successfully without registering."
+            remove_flagfile
+            finish_msg
+            exit 0
+        fi
+    else
+        msg "Assuming this is the first deployment and ELB_LIST=_any_ so finishing successfully without registering."
         finish_msg
         exit 0
     fi
