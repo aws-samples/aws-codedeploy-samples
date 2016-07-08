@@ -40,6 +40,9 @@ MIN_CLI_VERSION='1.3.25'
 # Create a flagfile for each deployment
 FLAGFILE="/tmp/asg_codedeploy_flags-$DEPLOYMENT_GROUP_ID-$DEPLOYMENT_ID"
 
+# Handle ASG processes
+HANDLE_PROCS=false
+
 # Usage: get_instance_region
 #
 #   Writes to STDOUT the AWS region as known by the local instance.
@@ -224,11 +227,13 @@ autoscaling_enter_standby() {
         return 0
     fi
 
-    msg "Checking ASG ${asg_name} suspended processes"
-    check_suspended_processes
+    if [ "$HANDLE_PROCS" = "true" ]; then
+        msg "Checking ASG ${asg_name} suspended processes"
+        check_suspended_processes
 
-    # Suspend troublesome processes while deploying
-    suspend_processes
+        # Suspend troublesome processes while deploying
+        suspend_processes
+    fi
 
     msg "Checking to see if ASG ${asg_name} will let us decrease desired capacity"
     local min_desired=$($AWS_CLI autoscaling describe-auto-scaling-groups \
@@ -351,8 +356,10 @@ autoscaling_exit_standby() {
         msg "Auto scaling group was not decremented previously, not incrementing min value"
     fi
 
-    # Resume processes, except for the ones suspended before deployment
-    resume_processes
+    if [ "$HANDLE_PROCS" = "true" ]; then
+        # Resume processes, except for the ones suspended before deployment
+        resume_processes
+    fi
 
     # Clean up the FLAGFILE
     remove_flagfile
