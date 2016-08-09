@@ -39,7 +39,7 @@ WAITER_INTERVAL_ASG=1
 WAITER_INTERVAL_ALB=10
 
 # AutoScaling Standby features at minimum require this version to work.
-MIN_CLI_VERSION='1.3.25'
+MIN_CLI_VERSION='1.10.55'
 
 # Usage: get_instance_region
 #
