@@ -50,6 +50,15 @@ fi
 
 msg "Instance is not part of an ASG, continuing..."
 
+if [ "${ELB_LIST}" = all ]; then
+    msg "Finding all the ELBs that this instance is registered to"
+    get_elb_list $INSTANCE_ID
+    if [ $? != 0 ]; then
+        error_exit "Must have at least one load balancer to deregister from"
+    fi
+    echo "$ELB_LIST" > /tmp/elblist
+fi
+
 msg "Checking that user set at least one load balancer"
 if test -z "$ELB_LIST"; then
     error_exit "Must have at least one load balancer to deregister from"

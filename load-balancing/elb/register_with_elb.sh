@@ -50,6 +50,16 @@ fi
 
 msg "Instance is not part of an ASG, continuing..."
 
+if [ "${ELB_LIST}" = all ]; then
+    if [ -a /tmp/elblist ]; then
+        msg "Finding all the ELBs that this instance was previously registered to"
+        read ELB_LIST < /tmp/elblist
+        rm -f /tmp/elblist
+    else
+        error_exit "Must have at least one load balancer to register to"
+    fi
+fi
+
 msg "Checking that user set at least one load balancer"
 if test -z "$ELB_LIST"; then
     error_exit "Must have at least one load balancer to register to"
