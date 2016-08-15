@@ -23,7 +23,7 @@ in the CLI's user guide.
 
 ```
     elasticloadbalancing:Describe*
-    elasticloadbalancing:DeregisterTagets
+    elasticloadbalancing:DeregisterTargets
     elasticloadbalancing:RegisterTargets
     autoscaling:Describe*
     autoscaling:EnterStandby
