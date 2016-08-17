@@ -14,7 +14,10 @@
 # permissions and limitations under the License.
 
 # ELB_LIST defines which Elastic Load Balancers this instance should be part of.
-# The elements in ELB_LIST should be seperated by space.
+# The elements in ELB_LIST should be separated by space. Safe default is "".
+# Set to "_all_" to automatically find all load balancers the instance is registered to.
+# Set to "_any_" will work as "_all_" but will not fail if instance is not attached to
+# any ASG or ELB, giving flexibility.
 ELB_LIST=""
 
 # Under normal circumstances, you shouldn't need to change anything below this line.
@@ -34,6 +37,12 @@ WAITER_INTERVAL=1
 # AutoScaling Standby features at minimum require this version to work.
 MIN_CLI_VERSION='1.3.25'
 
+# Create a flagfile for each deployment
+FLAGFILE="/tmp/asg_codedeploy_flags-$DEPLOYMENT_GROUP_ID-$DEPLOYMENT_ID"
+
+# Handle ASG processes
+HANDLE_PROCS=false
+
 # Usage: get_instance_region
 #
 #   Writes to STDOUT the AWS region as known by the local instance.
@@ -48,6 +57,123 @@ get_instance_region() {
 }
 
 AWS_CLI="aws --region $(get_instance_region)"
+
+# Usage: set_flag <flag> <value>
+#
+#   Writes <flag>=<value> to FLAGFILE
+set_flag() {
+  if echo "$1=$2" >> $FLAGFILE; then
+    return 0
+  else
+    error_exit "Unable to write flag \"$1=$2\" to $FLAGFILE"
+  fi
+}
+
+# Usage: get_flag <flag>
+#
+#   Checks for <flag> in FLAGFILE. Echoes it's value and returns 0 on success or non-zero if it fails to read the file.
+get_flag() {
+  if [ -r $FLAGFILE ]; then
+    local result=$(awk -F= -v flag="$1" '{if ( $1 == flag ) {print $2}}' $FLAGFILE)
+    echo "${result}"
+    return 0
+  else
+    # FLAGFILE doesn't exist
+    return 1
+  fi
+}
+
+# Usage: check_suspended_processes
+#
+#   Checks processes suspended on the ASG before beginning and store them in
+#   the FLAGFILE to avoid resuming afterwards. Also abort if Launch process
+#   is suspended.
+check_suspended_processes() {
+  # Get suspended processes in an array
+  local suspended=($($AWS_CLI autoscaling describe-auto-scaling-groups \
+      --auto-scaling-group-name "${asg_name}" \
+      --query 'AutoScalingGroups[].SuspendedProcesses' \
+      --output text | awk '{printf $1" "}'))
+
+  if [ ${#suspended[@]} -eq 0 ]; then
+    msg "No processes were suspended on the ASG before starting."
+  else
+    msg "This processes were suspended on the ASG before starting: ${suspended[*]}"
+  fi
+
+  # If "Launch" process is suspended abort because we will not be able to recover from StandBy. Note the "[[ ... =~" bashism.
+  if [[ "${suspended[@]}" =~ "Launch" ]]; then
+    error_exit "'Launch' process of AutoScaling is suspended which will not allow us to recover the instance from StandBy. Aborting."
+  fi
+
+  for process in ${suspended[@]}; do
+    set_flag "$process" "true"
+  done
+}
+
+# Usage: suspend_processes
+#
+#   Suspend processes known to cause problems during deployments.
+#   The API call is idempotent so it doesn't matter if any were previously suspended.
+suspend_processes() {
+  local -a processes=(AZRebalance AlarmNotification ScheduledActions ReplaceUnhealthy)
+
+  msg "Suspending ${processes[*]} processes"
+  $AWS_CLI autoscaling suspend-processes \
+    --auto-scaling-group-name "${asg_name}" \
+    --scaling-processes ${processes[@]}
+  if [ $? != 0 ]; then
+    error_exit "Failed to suspend ${processes[*]} processes for ASG ${asg_name}. Aborting as this may cause issues."
+  fi
+}
+
+# Usage: resume_processes
+#
+#   Resume processes suspended, except for the one suspended before deployment.
+resume_processes() {
+  local -a processes=(AZRebalance AlarmNotification ScheduledActions ReplaceUnhealthy)
+  local -a to_resume
+
+  for p in ${processes[@]}; do
+    if ! local tmp_flag_value=$(get_flag "$p"); then
+        error_exit "$FLAGFILE doesn't exist or is unreadable"
+    elif [ ! "$tmp_flag_value" = "true" ] ; then
+      to_resume=("${to_resume[@]}" "$p")
+    fi
+  done
+
+  msg "Resuming ${to_resume[*]} processes"
+  $AWS_CLI autoscaling resume-processes \
+    --auto-scaling-group-name "${asg_name}" \
+    --scaling-processes ${to_resume[@]}
+  if [ $? != 0 ]; then
+    error_exit "Failed to resume ${to_resume[*]} processes for ASG ${asg_name}. Aborting as this may cause issues."
+  fi
+}
+
+# Usage: remove_flagfile
+#
+#   Removes FLAGFILE. Returns non-zero if failure.
+remove_flagfile() {
+  if rm $FLAGFILE; then
+      msg "Successfully removed flagfile $FLAGFILE"
+      return 0
+  else
+      msg "WARNING: Failed to remove flagfile $FLAGFILE."
+  fi
+}
+
+# Usage: finish_msg
+#
+#   Prints some finishing statistics
+finish_msg() {
+  msg "Finished $(basename $0) at $(/bin/date "+%F %T")"
+  
+  end_sec=$(/bin/date +%s.%N)
+  elapsed_seconds=$(echo "$end_sec" "$start_sec" | awk '{ print $1 - $2 }')
+  
+  msg "Elapsed time: $elapsed_seconds"
+}
 
 # Usage: autoscaling_group_name <EC2 instance ID>
 #
@@ -101,6 +227,14 @@ autoscaling_enter_standby() {
         return 0
     fi
 
+    if [ "$HANDLE_PROCS" = "true" ]; then
+        msg "Checking ASG ${asg_name} suspended processes"
+        check_suspended_processes
+
+        # Suspend troublesome processes while deploying
+        suspend_processes
+    fi
+
     msg "Checking to see if ASG ${asg_name} will let us decrease desired capacity"
     local min_desired=$($AWS_CLI autoscaling describe-auto-scaling-groups \
         --auto-scaling-group-name "${asg_name}" \
@@ -113,6 +247,7 @@ autoscaling_enter_standby() {
     if [ -z "$min_cap" -o -z "$desired_cap" ]; then
         msg "Unable to determine minimum and desired capacity for ASG ${asg_name}."
         msg "Attempting to put this instance into standby regardless."
+        set_flag "asgmindecremented" "false"
     elif [ $min_cap == $desired_cap -a $min_cap -gt 0 ]; then
         local new_min=$(($min_cap - 1))
         msg "Decrementing ASG ${asg_name}'s minimum size to $new_min"
@@ -123,10 +258,13 @@ autoscaling_enter_standby() {
             msg "Failed to reduce ASG ${asg_name}'s minimum size to $new_min. Cannot put this instance into Standby."
             return 1
         else
-            msg "ASG ${asg_name}'s minimum size has been decremented, creating flag file /tmp/asgmindecremented"
-            # Create a "flag" file to denote that the ASG min has been decremented
-            touch /tmp/asgmindecremented
+            msg "ASG ${asg_name}'s minimum size has been decremented, creating flag in file $FLAGFILE"
+            # Create a "flag" denote that the ASG min has been decremented
+            set_flag "asgmindecremented" "true"
         fi
+    else
+        msg "No need to decrement ASG ${asg_name}'s minimum size"
+        set_flag "asgmindecremented" "false"
     fi
 
     msg "Putting instance $instance_id into Standby"
@@ -192,7 +330,9 @@ autoscaling_exit_standby() {
         return 1
     fi
     
-    if [ -a /tmp/asgmindecremented ]; then
+    if ! local tmp_flag_value=$(get_flag "asgmindecremented"); then
+        error_exit "$FLAGFILE doesn't exist or is unreadable"
+    elif [ "$tmp_flag_value" = "true" ]; then
         local min_desired=$($AWS_CLI autoscaling describe-auto-scaling-groups \
             --auto-scaling-group-name "${asg_name}" \
             --query 'AutoScalingGroups[0].[MinSize, DesiredCapacity]' \
@@ -207,16 +347,22 @@ autoscaling_exit_standby() {
             --min-size $new_min)
         if [ $? != 0 ]; then
             msg "Failed to increase ASG ${asg_name}'s minimum size to $new_min."
+            remove_flagfile
             return 1
         else
             msg "Successfully incremented ASG ${asg_name}'s minimum size"
-            msg "Removing /tmp/asgmindecremented flag file"
-            rm -f /tmp/asgmindecremented
         fi
     else
         msg "Auto scaling group was not decremented previously, not incrementing min value"
     fi
 
+    if [ "$HANDLE_PROCS" = "true" ]; then
+        # Resume processes, except for the ones suspended before deployment
+        resume_processes
+    fi
+
+    # Clean up the FLAGFILE
+    remove_flagfile
     return 0
 }
 
@@ -240,6 +386,9 @@ get_instance_state_asg() {
     fi
 }
 
+# Usage: reset_waiter_timeout <ELB name> <state name>
+#
+#    Resets the timeout value to account for the ELB timeout and also connection draining.
 reset_waiter_timeout() {
     local elb=$1
     local state_name=$2
@@ -396,30 +545,11 @@ validate_elb() {
 get_elb_list() {
     local instance_id=$1
 
-    local asg_name=$($AWS_CLI autoscaling describe-auto-scaling-instances \
-        --instance-ids $instance_id \
-        --query AutoScalingInstances[*].AutoScalingGroupName \
-        --output text | sed -e $'s/\t/ /g')
     local elb_list=""
 
-    if [ -z "${asg_name}" ]; then
-        msg "Instance is not part of an ASG. Looking up from ELB."
-        local all_balancers=$($AWS_CLI elb describe-load-balancers \
-            --query LoadBalancerDescriptions[*].LoadBalancerName \
-            --output text | sed -e $'s/\t/ /g')
-        for elb in $all_balancers; do
-            local instance_health
-            instance_health=$(get_instance_health_elb $instance_id $elb)
-            if [ $? == 0 ]; then
-                elb_list="$elb_list $elb"
-            fi
-        done
-    else
-        elb_list=$($AWS_CLI autoscaling describe-auto-scaling-groups \
-            --auto-scaling-group-names "${asg_name}" \
-            --query AutoScalingGroups[*].LoadBalancerNames \
-            --output text | sed -e $'s/\t/ /g')
-    fi
+    elb_list=$($AWS_CLI elb describe-load-balancers \
+      --query $'LoadBalancerDescriptions[].[join(`,`,Instances[?InstanceId==`'$instance_id'`].InstanceId),LoadBalancerName]' \
+      --output text | grep $instance_id | awk '{ORS=" ";print $2}')
 
     if [ -z "$elb_list" ]; then
         return 1

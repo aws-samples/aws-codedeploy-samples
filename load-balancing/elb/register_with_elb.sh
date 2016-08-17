@@ -44,15 +44,44 @@ if [ $? == 0 -a -n "${asg}" ]; then
         error_exit "Failed to move instance out of standby"
     else
         msg "Instance is no longer in Standby"
+        finish_msg
         exit 0
     fi
 fi
 
-msg "Instance is not part of an ASG, continuing..."
+msg "Instance is not part of an ASG, continuing with ELB"
 
-msg "Checking that user set at least one load balancer"
-if test -z "$ELB_LIST"; then
-    error_exit "Must have at least one load balancer to register to"
+if [ -z "$ELB_LIST" ]; then
+    error_exit "ELB_LIST is empty. Must have at least one load balancer to register to, or \"_all_\", \"_any_\" values."
+elif [ "${ELB_LIST}" = "_all_" ]; then
+    if [ "$(get_flag "dereg")" = "true" ]; then
+        msg "Finding all the ELBs that this instance was previously registered to"
+        if ! ELB_LIST=$(get_flag "ELBs"); then
+          error_exit "$FLAGFILE doesn't exist or is unreadble"
+        elif [ -z $ELB_LIST ]; then
+          error_exit "Couldn't find any. Must have at least one load balancer to register to."
+        fi
+    else
+        msg "Assuming this is the first deployment and ELB_LIST=_all_ so finishing successfully without registering."
+        finish_msg
+        exit 0
+    fi
+elif [ "${ELB_LIST}" = "_any_" ]; then
+    if [ "$(get_flag "dereg")" = "true" ]; then
+        msg "Finding all the ELBs that this instance was previously registered to"
+        if ! ELB_LIST=$(get_flag "ELBs"); then
+            error_exit "$FLAGFILE doesn't exist or is unreadble"
+        elif [ -z $ELB_LIST ]; then
+            msg "Couldn't find any, but ELB_LIST=_any_ so finishing successfully without registering."
+            remove_flagfile
+            finish_msg
+            exit 0
+        fi
+    else
+        msg "Assuming this is the first deployment and ELB_LIST=_any_ so finishing successfully without registering."
+        finish_msg
+        exit 0
+    fi
 fi
 
 # Loop through all LBs the user set, and attempt to register this instance to them.
@@ -72,7 +101,7 @@ for elb in $ELB_LIST; do
     fi
 done
 
-# Wait for all Registrations to finish
+# Wait for all registrations to finish
 msg "Waiting for instance to register to its load balancers"
 for elb in $ELB_LIST; do
     wait_for_state "elb" $INSTANCE_ID "InService" $elb
@@ -81,9 +110,6 @@ for elb in $ELB_LIST; do
     fi
 done
 
-msg "Finished $(basename $0) at $(/bin/date "+%F %T")"
+remove_flagfile
 
-end_sec=$(/bin/date +%s.%N)
-elapsed_seconds=$(echo "$end_sec - $start_sec" | /usr/bin/bc)
-
-msg "Elapsed time: $elapsed_seconds"
+finish_msg
