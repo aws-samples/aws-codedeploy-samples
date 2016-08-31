@@ -15,7 +15,7 @@ The register and deregister scripts have a couple of dependencies in order to pr
 Application Load Balancing and AutoScaling:
 
 1. The [AWS CLI](http://aws.amazon.com/cli/). In order to take advantage of
-AutoScaling's Standby feature, the CLI must be at least version 1.3.25. If you
+AutoScaling's Standby feature, the CLI must be at least version 1.10.55. If you
 have Python and PIP already installed, the CLI can simply be installed with `pip
 install awscli`. Otherwise, follow the [installation instructions](http://docs.aws.amazon.com/cli/latest/userguide/installing.html)
 in the CLI's user guide.
@@ -23,7 +23,7 @@ in the CLI's user guide.
 
 ```
     elasticloadbalancing:Describe*
-    elasticloadbalancing:DeregisterTagets
+    elasticloadbalancing:DeregisterTargets
     elasticloadbalancing:RegisterTargets
     autoscaling:Describe*
     autoscaling:EnterStandby
