@@ -316,10 +316,10 @@ wait_for_state() {
         if [ $? != 0 ]; then
             error_exit "Failed re-setting waiter timeout for $target_group"
         fi
-        local waiter_interval = $WAITER_INTERVAL_ALB
+        local waiter_interval=$WAITER_INTERVAL_ALB
     elif [ "$service" == "autoscaling" ]; then
         instance_state_cmd="get_instance_state_asg $instance_id"
-        local waiter_interval = $WAITER_INTERVAL_ASG
+        local waiter_interval=$WAITER_INTERVAL_ASG
     else
         msg "Cannot wait for instance state; unknown service type, '$service'"
         return 1
