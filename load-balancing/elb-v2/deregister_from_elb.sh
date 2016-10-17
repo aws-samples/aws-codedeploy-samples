@@ -31,7 +31,7 @@ msg "Checking if instance $INSTANCE_ID is part of an AutoScaling group"
 asg=$(autoscaling_group_name $INSTANCE_ID)
 if [ $? == 0 -a -n "${asg}" ]; then
     msg "Found AutoScaling group for instance $INSTANCE_ID: ${asg}"
-    
+
     msg "Checking that installed CLI version is at least at version required for AutoScaling Standby"
     check_cli_version
     if [ $? != 0 ]; then
@@ -44,60 +44,49 @@ if [ $? == 0 -a -n "${asg}" ]; then
         error_exit "Failed to move instance into standby"
     else
         msg "Instance is in standby"
-        finish_msg
         exit 0
     fi
 fi
 
-msg "Instance is not part of an ASG, trying with ELB..."
+msg "Instance is not part of an ASG, continuing..."
 
-set_flag "dereg" "true"
-
-if [ -z "$ELB_LIST" ]; then
-    error_exit "ELB_LIST is empty. Must have at least one load balancer to deregister from, or \"_all_\", \"_any_\" values."
-elif [ "${ELB_LIST}" = "_all_" ]; then
-    msg "Automatically finding all the ELBs that this instance is registered to..."
-    get_elb_list $INSTANCE_ID
-    if [ $? != 0 ]; then
-        error_exit "Couldn't find any. Must have at least one load balancer to deregister from."
-    fi
-    set_flag "ELBs" "$ELB_LIST"
-elif [ "${ELB_LIST}" = "_any_" ]; then
-    msg "Automatically finding all the ELBs that this instance is registered to..."
-    get_elb_list $INSTANCE_ID
-    if [ $? != 0 ]; then
-        msg "Couldn't find any, but ELB_LIST=any so finishing successfully without deregistering."
-        set_flag "ELBs" ""
-        finish_msg
-        exit 0
-    fi
-    set_flag "ELBs" "$ELB_LIST"
+msg "Checking that user set at least one valid target group"
+if test -z "$TARGET_GROUP_LIST"; then
+    error_exit "Must have at least one target group to deregister from"
 fi
 
-# Loop through all LBs the user set, and attempt to deregister this instance from them.
-for elb in $ELB_LIST; do
-    msg "Checking validity of load balancer named '$elb'"
-    validate_elb $INSTANCE_ID $elb
-    if [ $? != 0 ]; then
-        msg "Error validating $elb; cannot continue with this LB"
-        continue
+msg "Checking whehter the port number has been set"
+if test -n "$PORT"; then
+    if ! [[ $PORT =~ ^[0-9]+$ ]] ; then
+       error_exit "$PORT is not a valid port number"
     fi
+    msg "Found port $PORT, it will be used for instance health check against target groups"
+else
+    msg "PORT variable is not set, will use the default port number set in target groups"
+fi
 
-    msg "Deregistering $INSTANCE_ID from $elb"
-    deregister_instance $INSTANCE_ID $elb
+# Loop through all target groups the user set, and attempt to deregister this instance from them.
+for target_group in $TARGET_GROUP_LIST; do
+    msg "Deregistering $INSTANCE_ID from $target_group starts"
+    deregister_instance $INSTANCE_ID $target_group
 
     if [ $? != 0 ]; then
-        error_exit "Failed to deregister instance $INSTANCE_ID from ELB $elb"
-    fi
-done
-
-# Wait for all deregistrations to finish
-msg "Waiting for instance to de-register from its load balancers"
-for elb in $ELB_LIST; do
-    wait_for_state "elb" $INSTANCE_ID "OutOfService" $elb
-    if [ $? != 0 ]; then
-        error_exit "Failed waiting for $INSTANCE_ID to leave $elb"
+        error_exit "Failed to deregister instance $INSTANCE_ID from target group $target_group"
     fi
 done
 
-finish_msg
+# Wait for all Deregistrations to finish
+msg "Waiting for instance to de-register from its target groups"
+for target_group in $TARGET_GROUP_LIST; do
+    wait_for_state "alb" $INSTANCE_ID "unused" $target_group
+    if [ $? != 0 ]; then
+        error_exit "Failed waiting for $INSTANCE_ID to leave $target_group"
+    fi
+done
+
+msg "Finished $(basename $0) at $(/bin/date "+%F %T")"
+
+end_sec=$(/bin/date +%s.%N)
+elapsed_seconds=$(echo "$end_sec - $start_sec" | /usr/bin/bc)
+
+msg "Elapsed time: $elapsed_seconds"

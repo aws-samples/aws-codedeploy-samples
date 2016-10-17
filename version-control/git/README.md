@@ -9,6 +9,8 @@ CodeDeploy Application and Deployment Group must already exist.
 
     !!! CAUTION !!! Because this does an S3 upload on every push, you may incur S3 transfer charges.
 
+    --Note, you need to make this script executable ( chmod +x pre-push ) after installing it in ./.git/hooks/pre-push
+
 No changes to the script itself should be required. Instead, it pulls the
 necessary information from git config. The required keys are
 `aws-codedeploy.application-name`, `aws-codedeploy.s3bucket`, and

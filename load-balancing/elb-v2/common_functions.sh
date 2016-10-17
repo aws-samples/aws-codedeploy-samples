@@ -13,12 +13,13 @@
 # express or implied. See the License for the specific language governing
 # permissions and limitations under the License.
 
-# ELB_LIST defines which Elastic Load Balancers this instance should be part of.
-# The elements in ELB_LIST should be separated by space. Safe default is "".
-# Set to "_all_" to automatically find all load balancers the instance is registered to.
-# Set to "_any_" will work as "_all_" but will not fail if instance is not attached to
-# any ASG or ELB, giving flexibility.
-ELB_LIST=""
+# TARGET_LIST defines which target groups behind Load Balancer this instance should be part of.
+# The elements in TARGET_LIST should be seperated by space.
+TARGET_GROUP_LIST=""
+
+# PORT defines which port the application is running at.
+# If PORT is not specified, the script will use the default port set in target groups
+PORT=""
 
 # Under normal circumstances, you shouldn't need to change anything below this line.
 # -----------------------------------------------------------------------------
@@ -31,17 +32,14 @@ DEBUG=true
 # Number of times to check for a resouce to be in the desired state.
 WAITER_ATTEMPTS=60
 
-# Number of seconds to wait between attempts for resource to be in a state.
-WAITER_INTERVAL=1
+# Number of seconds to wait between attempts for resource to be in a state for instance in ASG.
+WAITER_INTERVAL_ASG=1
+
+# Number of seconds to wait between attempts for resource to be in a state for ALB registration/deregistration.
+WAITER_INTERVAL_ALB=10
 
 # AutoScaling Standby features at minimum require this version to work.
-MIN_CLI_VERSION='1.3.25'
-
-# Create a flagfile for each deployment
-FLAGFILE="/tmp/asg_codedeploy_flags-$DEPLOYMENT_GROUP_ID-$DEPLOYMENT_ID"
-
-# Handle ASG processes
-HANDLE_PROCS=false
+MIN_CLI_VERSION='1.10.55'
 
 # Usage: get_instance_region
 #
@@ -57,123 +55,6 @@ get_instance_region() {
 }
 
 AWS_CLI="aws --region $(get_instance_region)"
-
-# Usage: set_flag <flag> <value>
-#
-#   Writes <flag>=<value> to FLAGFILE
-set_flag() {
-  if echo "$1=$2" >> $FLAGFILE; then
-    return 0
-  else
-    error_exit "Unable to write flag \"$1=$2\" to $FLAGFILE"
-  fi
-}
-
-# Usage: get_flag <flag>
-#
-#   Checks for <flag> in FLAGFILE. Echoes it's value and returns 0 on success or non-zero if it fails to read the file.
-get_flag() {
-  if [ -r $FLAGFILE ]; then
-    local result=$(awk -F= -v flag="$1" '{if ( $1 == flag ) {print $2}}' $FLAGFILE)
-    echo "${result}"
-    return 0
-  else
-    # FLAGFILE doesn't exist
-    return 1
-  fi
-}
-
-# Usage: check_suspended_processes
-#
-#   Checks processes suspended on the ASG before beginning and store them in
-#   the FLAGFILE to avoid resuming afterwards. Also abort if Launch process
-#   is suspended.
-check_suspended_processes() {
-  # Get suspended processes in an array
-  local suspended=($($AWS_CLI autoscaling describe-auto-scaling-groups \
-      --auto-scaling-group-name "${asg_name}" \
-      --query 'AutoScalingGroups[].SuspendedProcesses' \
-      --output text | awk '{printf $1" "}'))
-
-  if [ ${#suspended[@]} -eq 0 ]; then
-    msg "No processes were suspended on the ASG before starting."
-  else
-    msg "This processes were suspended on the ASG before starting: ${suspended[*]}"
-  fi
-
-  # If "Launch" process is suspended abort because we will not be able to recover from StandBy. Note the "[[ ... =~" bashism.
-  if [[ "${suspended[@]}" =~ "Launch" ]]; then
-    error_exit "'Launch' process of AutoScaling is suspended which will not allow us to recover the instance from StandBy. Aborting."
-  fi
-
-  for process in ${suspended[@]}; do
-    set_flag "$process" "true"
-  done
-}
-
-# Usage: suspend_processes
-#
-#   Suspend processes known to cause problems during deployments.
-#   The API call is idempotent so it doesn't matter if any were previously suspended.
-suspend_processes() {
-  local -a processes=(AZRebalance AlarmNotification ScheduledActions ReplaceUnhealthy)
-
-  msg "Suspending ${processes[*]} processes"
-  $AWS_CLI autoscaling suspend-processes \
-    --auto-scaling-group-name "${asg_name}" \
-    --scaling-processes ${processes[@]}
-  if [ $? != 0 ]; then
-    error_exit "Failed to suspend ${processes[*]} processes for ASG ${asg_name}. Aborting as this may cause issues."
-  fi
-}
-
-# Usage: resume_processes
-#
-#   Resume processes suspended, except for the one suspended before deployment.
-resume_processes() {
-  local -a processes=(AZRebalance AlarmNotification ScheduledActions ReplaceUnhealthy)
-  local -a to_resume
-
-  for p in ${processes[@]}; do
-    if ! local tmp_flag_value=$(get_flag "$p"); then
-        error_exit "$FLAGFILE doesn't exist or is unreadable"
-    elif [ ! "$tmp_flag_value" = "true" ] ; then
-      to_resume=("${to_resume[@]}" "$p")
-    fi
-  done
-
-  msg "Resuming ${to_resume[*]} processes"
-  $AWS_CLI autoscaling resume-processes \
-    --auto-scaling-group-name "${asg_name}" \
-    --scaling-processes ${to_resume[@]}
-  if [ $? != 0 ]; then
-    error_exit "Failed to resume ${to_resume[*]} processes for ASG ${asg_name}. Aborting as this may cause issues."
-  fi
-}
-
-# Usage: remove_flagfile
-#
-#   Removes FLAGFILE. Returns non-zero if failure.
-remove_flagfile() {
-  if rm $FLAGFILE; then
-      msg "Successfully removed flagfile $FLAGFILE"
-      return 0
-  else
-      msg "WARNING: Failed to remove flagfile $FLAGFILE."
-  fi
-}
-
-# Usage: finish_msg
-#
-#   Prints some finishing statistics
-finish_msg() {
-  msg "Finished $(basename $0) at $(/bin/date "+%F %T")"
-  
-  end_sec=$(/bin/date +%s.%N)
-  elapsed_seconds=$(echo "$end_sec" "$start_sec" | awk '{ print $1 - $2 }')
-  
-  msg "Elapsed time: $elapsed_seconds"
-}
 
 # Usage: autoscaling_group_name <EC2 instance ID>
 #
@@ -211,8 +92,7 @@ autoscaling_enter_standby() {
     local asg_name=${2}
 
     msg "Checking if this instance has already been moved in the Standby state"
-    local instance_state_temp=$(get_instance_state_asg $instance_id)
-    local instance_state=${instance_state_temp::-1}
+    local instance_state=$(get_instance_state_asg $instance_id)
     if [ $? != 0 ]; then
         msg "Unable to get this instance's lifecycle state."
         return 1
@@ -228,14 +108,6 @@ autoscaling_enter_standby() {
         return 0
     fi
 
-    if [ "$HANDLE_PROCS" = "true" ]; then
-        msg "Checking ASG ${asg_name} suspended processes"
-        check_suspended_processes
-
-        # Suspend troublesome processes while deploying
-        suspend_processes
-    fi
-
     msg "Checking to see if ASG ${asg_name} will let us decrease desired capacity"
     local min_desired=$($AWS_CLI autoscaling describe-auto-scaling-groups \
         --auto-scaling-group-name "${asg_name}" \
@@ -248,7 +120,6 @@ autoscaling_enter_standby() {
     if [ -z "$min_cap" -o -z "$desired_cap" ]; then
         msg "Unable to determine minimum and desired capacity for ASG ${asg_name}."
         msg "Attempting to put this instance into standby regardless."
-        set_flag "asgmindecremented" "false"
     elif [ $min_cap == $desired_cap -a $min_cap -gt 0 ]; then
         local new_min=$(($min_cap - 1))
         msg "Decrementing ASG ${asg_name}'s minimum size to $new_min"
@@ -259,13 +130,10 @@ autoscaling_enter_standby() {
             msg "Failed to reduce ASG ${asg_name}'s minimum size to $new_min. Cannot put this instance into Standby."
             return 1
         else
-            msg "ASG ${asg_name}'s minimum size has been decremented, creating flag in file $FLAGFILE"
-            # Create a "flag" denote that the ASG min has been decremented
-            set_flag "asgmindecremented" "true"
+            msg "ASG ${asg_name}'s minimum size has been decremented, creating flag file /tmp/asgmindecremented"
+            # Create a "flag" file to denote that the ASG min has been decremented
+            touch /tmp/asgmindecremented
         fi
-    else
-        msg "No need to decrement ASG ${asg_name}'s minimum size"
-        set_flag "asgmindecremented" "false"
     fi
 
     msg "Putting instance $instance_id into Standby"
@@ -281,7 +149,7 @@ autoscaling_enter_standby() {
     msg "Waiting for move to Standby to finish"
     wait_for_state "autoscaling" $instance_id "Standby"
     if [ $? != 0 ]; then
-        local wait_timeout=$(($WAITER_INTERVAL * $WAITER_ATTEMPTS))
+        local wait_timeout=$(($WAITER_INTERVAL_ASG * $WAITER_ATTEMPTS))
         msg "Instance $instance_id did not make it to standby after $wait_timeout seconds"
         return 1
     fi
@@ -298,8 +166,7 @@ autoscaling_exit_standby() {
     local asg_name=${2}
 
     msg "Checking if this instance has already been moved out of Standby state"
-    local instance_state_temp=$(get_instance_state_asg $instance_id)
-    local instance_state=${instance_state_temp::-1}
+    local instance_state=$(get_instance_state_asg $instance_id)
     if [ $? != 0 ]; then
         msg "Unable to get this instance's lifecycle state."
         return 1
@@ -327,14 +194,12 @@ autoscaling_exit_standby() {
     msg "Waiting for exit-standby to finish"
     wait_for_state "autoscaling" $instance_id "InService"
     if [ $? != 0 ]; then
-        local wait_timeout=$(($WAITER_INTERVAL * $WAITER_ATTEMPTS))
+        local wait_timeout=$(($WAITER_INTERVAL_ASG * $WAITER_ATTEMPTS))
         msg "Instance $instance_id did not make it to InService after $wait_timeout seconds"
         return 1
     fi
-    
-    if ! local tmp_flag_value=$(get_flag "asgmindecremented"); then
-        error_exit "$FLAGFILE doesn't exist or is unreadable"
-    elif [ "$tmp_flag_value" = "true" ]; then
+
+    if [ -a /tmp/asgmindecremented ]; then
         local min_desired=$($AWS_CLI autoscaling describe-auto-scaling-groups \
             --auto-scaling-group-name "${asg_name}" \
             --query 'AutoScalingGroups[0].[MinSize, DesiredCapacity]' \
@@ -349,22 +214,16 @@ autoscaling_exit_standby() {
             --min-size $new_min)
         if [ $? != 0 ]; then
             msg "Failed to increase ASG ${asg_name}'s minimum size to $new_min."
-            remove_flagfile
             return 1
         else
             msg "Successfully incremented ASG ${asg_name}'s minimum size"
+            msg "Removing /tmp/asgmindecremented flag file"
+            rm -f /tmp/asgmindecremented
         fi
     else
         msg "Auto scaling group was not decremented previously, not incrementing min value"
     fi
 
-    if [ "$HANDLE_PROCS" = "true" ]; then
-        # Resume processes, except for the ones suspended before deployment
-        resume_processes
-    fi
-
-    # Clean up the FLAGFILE
-    remove_flagfile
     return 0
 }
 
@@ -388,34 +247,45 @@ get_instance_state_asg() {
     fi
 }
 
-# Usage: reset_waiter_timeout <ELB name> <state name>
+# Usage: reset_waiter_timeout <target group name> <state name>
 #
-#    Resets the timeout value to account for the ELB timeout and also connection draining.
+#    reset timeout based on different instance states
+#    When waiting for instance goes into "healthy" state, using health check trheshold * (health_check_timeout + healthy_check_interval) to compute timeout for health check
+#    When waiting for instance goes into "unused" state, using deregistration timeout as timeout for health check
+#
 reset_waiter_timeout() {
-    local elb=$1
+    local target_group_name=$1
     local state_name=$2
 
-    if [ "$state_name" == "InService" ]; then
-
-        # Wait for a health check to succeed
-        local timeout=$($AWS_CLI elb describe-load-balancers \
-            --load-balancer-name $elb \
-            --query 'LoadBalancerDescriptions[0].HealthCheck.Timeout')
-
-    elif [ "$state_name" == "OutOfService" ]; then
-
-        # If connection draining is enabled, wait for connections to drain
-        local draining_values=$($AWS_CLI elb describe-load-balancer-attributes \
-            --load-balancer-name $elb \
-            --query 'LoadBalancerAttributes.ConnectionDraining.[Enabled,Timeout]' \
+    if [ "$state_name" == "healthy" ]; then
+        msg "Getting target group health check configuration for target group $target_group_name"
+        local target_group_info=$($AWS_CLI elbv2 describe-target-groups \
+            --names $target_group_name \
+            --query 'TargetGroups[*].[HealthCheckIntervalSeconds,HealthCheckTimeoutSeconds,HealthyThresholdCount]' \
             --output text)
-        local draining_enabled=$(echo $draining_values | awk '{print $1}')
-        local timeout=$(echo $draining_values | awk '{print $2}')
 
-        if [ "$draining_enabled" != "True" ]; then
-            timeout=0
+        if [ $? != 0 ]; then
+            msg "Couldn't describe target group named '$target_group_name'"
+            return 1
         fi
 
+        msg "Calculating timeout for register instance in target group $target_group_name"
+        local health_check_interval=$(echo $target_group_info | awk '{print $1}')
+        local health_check_timeout=$(echo $target_group_info | awk '{print $2}')
+        local health_check_threshold=$(echo $target_group_info | awk '{print $2}')
+        local timeout=$(echo "$health_check_threshold * ( $health_check_timeout + $health_check_interval )" | /usr/bin/bc)
+    elif [ "$state_name" == "unused" ]; then
+        msg "Getting target group arn for target group $target_group_name"
+        local target_group_arn=$($AWS_CLI elbv2 describe-target-groups \
+            --names $target_group \
+            --query 'TargetGroups[*].[TargetGroupArn]' \
+            --output text)
+
+        msg "Getting instance deregistration delay timeout for target group $target_group with target group arn $target_group_arn"
+        local timeout=$($AWS_CLI elbv2 describe-target-group-attributes \
+            --target-group-arn $target_group_arn \
+            --query "Attributes[?Key=='deregistration_delay.timeout_seconds'].Value[]" \
+            --output text)
     else
         msg "Unknown state name, '$state_name'";
         return 1;
@@ -423,37 +293,39 @@ reset_waiter_timeout() {
 
     # Base register/deregister action may take up to about 30 seconds
     timeout=$((timeout + 30))
-
-    WAITER_ATTEMPTS=$((timeout / WAITER_INTERVAL))
+    msg "The current wait time out is set to $timeout second(s)"
+    WAITER_ATTEMPTS=$((timeout / WAITER_INTERVAL_ALB))
 }
 
-# Usage: wait_for_state <service> <EC2 instance ID> <state name> [ELB name]
+# Usage: wait_for_state <service> <EC2 instance ID> <state name> [target group name]
 #
 #    Waits for the state of <EC2 instance ID> to be in <state> as seen by <service>. Returns 0 if
 #    it successfully made it to that state; non-zero if not. By default, checks $WAITER_ATTEMPTS
-#    times, every $WAITER_INTERVAL seconds. If giving an [ELB name] to check under, these are reset
-#    to that ELB's timeout values.
+#    times, every $waiter_interval seconds. If giving an [target group name] to check under, these are reset
+#    to that target's timeout values.
 wait_for_state() {
     local service=$1
     local instance_id=$2
     local state_name=$3
-    local elb=$4
+    local target_group=$4
 
     local instance_state_cmd
-    if [ "$service" == "elb" ]; then
-        instance_state_cmd="get_instance_health_elb $instance_id $elb"
-        reset_waiter_timeout $elb $state_name
+    if [ "$service" == "alb" ]; then
+        instance_state_cmd="get_instance_health_target_group $instance_id $target_group"
+        reset_waiter_timeout $target_group $state_name
         if [ $? != 0 ]; then
-            error_exit "Failed resetting waiter timeout for $elb"
+            error_exit "Failed re-setting waiter timeout for $target_group"
         fi
+        local waiter_interval=$WAITER_INTERVAL_ALB
     elif [ "$service" == "autoscaling" ]; then
         instance_state_cmd="get_instance_state_asg $instance_id"
+        local waiter_interval=$WAITER_INTERVAL_ASG
     else
         msg "Cannot wait for instance state; unknown service type, '$service'"
         return 1
     fi
 
-    msg "Checking $WAITER_ATTEMPTS times, every $WAITER_INTERVAL seconds, for instance $instance_id to be in state $state_name"
+    msg "Checking $WAITER_ATTEMPTS times, every $waiter_interval seconds, for instance $instance_id to be in state $state_name"
 
     local instance_state=$($instance_state_cmd)
     local count=1
@@ -461,132 +333,139 @@ wait_for_state() {
     msg "Instance is currently in state: $instance_state"
     while [ "$instance_state" != "$state_name" ]; do
         if [ $count -ge $WAITER_ATTEMPTS ]; then
-            local timeout=$(($WAITER_ATTEMPTS * $WAITER_INTERVAL))
+            local timeout=$(($WAITER_ATTEMPTS * $waiter_interval))
             msg "Instance failed to reach state, $state_name within $timeout seconds"
             return 1
         fi
 
-        sleep $WAITER_INTERVAL
+        sleep $waiter_interval
 
-        instance_state_temp=$($instance_state_cmd)
-        instance_state=${instance_state_temp::-1}
-		count=$(($count + 1))
+        instance_state=$($instance_state_cmd)
+        count=$(($count + 1))
         msg "Instance is currently in state: $instance_state"
     done
 
     return 0
 }
 
-# Usage: get_instance_health_elb <EC2 instance ID> <ELB name>
+# Usage: get_instance_health_target_group <EC2 instance ID> <target group>
 #
-#    Gets the health of the given <EC2 instance ID> as known by <ELB name>. If it's a valid health
-#    status (one of InService|OutOfService|Unknown), then the health is printed to STDOUT and the
+#    Gets the health of the given <EC2 instance ID> as known by <target group name> against specific port. If it's a valid health
+#    status, then the health is printed to STDOUT and the
 #    function returns 0. Otherwise, no output and return is non-zero.
-get_instance_health_elb() {
+get_instance_health_target_group() {
     local instance_id=$1
-    local elb_name=$2
+    local target_group=$2
 
-    msg "Checking status of instance '$instance_id' in load balancer '$elb_name'"
+    msg "Checking status of instance '$instance_id' in target group '$target_group'"
 
-    # If describe-instance-health for this instance returns an error, then it's not part of
-    # this ELB. But, if the call was successful let's still double check that the status is
-    # valid.
-    local instance_status=$($AWS_CLI elb describe-instance-health \
-        --load-balancer-name $elb_name \
-        --instances $instance_id \
-        --query 'InstanceStates[].State' \
+    msg "Getting target group arn and port for target group '$target_group'"
+
+    local target_group_info=$($AWS_CLI elbv2 describe-target-groups \
+        --names $target_group \
+        --query 'TargetGroups[*].[TargetGroupArn,Port]' \
+        --output text)
+
+    if [ $? != 0 ]; then
+        msg "Couldn't describe target group named '$target_group_name'"
+        return 1
+    fi
+
+    local target_group_arn=$(echo $target_group_info | awk '{print $1}')
+    if test -z "$PORT"; then
+        local target_group_port=$(echo $target_group_info | awk '{print $2}')
+    else
+        local target_group_port=$PORT
+    fi
+
+    msg "Checking instance health state for instance '$instance_id' in target group '$target_group' against port '$target_group_port'"
+
+    local instance_status=$($AWS_CLI elbv2 describe-target-health \
+        --target-group-arn $target_group_arn \
+        --targets Id=$instance_id,Port=$target_group_port \
+        --query 'TargetHealthDescriptions[*].TargetHealth[].State' \
         --output text 2>/dev/null)
 
     if [ $? == 0 ]; then
         case "$instance_status" in
-            InService|OutOfService|Unknown)
+             initial|healthy|unhealthy|unused|draining)
                 echo -n $instance_status
                 return 0
                 ;;
             *)
-                msg "Instance '$instance_id' not part of ELB '$elb_name'"
+                msg "Couldn't retrieve instance health status for instance '$instance_id' in target group '$target_group'"
                 return 1
         esac
     fi
 }
 
-# Usage: validate_elb <EC2 instance ID> <ELB name>
+# Usage: deregister_instance <EC2 instance ID> <target group name>
 #
-#    Validates that the Elastic Load Balancer with name <ELB name> exists, is describable, and
-#    contains <EC2 instance ID> as one of its instances.
-#
-#    If any of these checks are false, the function returns non-zero.
-validate_elb() {
-    local instance_id=$1
-    local elb_name=$2
-
-    # Get the list of active instances for this LB.
-    local elb_instances=$($AWS_CLI elb describe-load-balancers \
-        --load-balancer-name $elb_name \
-        --query 'LoadBalancerDescriptions[*].Instances[*].InstanceId' \
-        --output text)
-    if [ $? != 0 ]; then
-        msg "Couldn't describe ELB instance named '$elb_name'"
-        return 1
-    fi
-
-    msg "Checking health of '$instance_id' as known by ELB '$elb_name'"
-    local instance_health=$(get_instance_health_elb $instance_id $elb_name)
-    if [ $? != 0 ]; then
-        return 1
-    fi
-
-    return 0
-}
-
-# Usage: get_elb_list <EC2 instance ID>
-#
-#   Finds all the ELBs that this instance is registered to. After execution, the variable
-#   "ELB_LIST" will contain the list of load balancers for the given instance.
-#
-#   If the given instance ID isn't found registered to any ELBs, the function returns non-zero
-get_elb_list() {
-    local instance_id=$1
-
-    local elb_list=""
-
-    elb_list=$($AWS_CLI elb describe-load-balancers \
-      --query $'LoadBalancerDescriptions[].[join(`,`,Instances[?InstanceId==`'$instance_id'`].InstanceId),LoadBalancerName]' \
-      --output text | grep $instance_id | awk '{ORS=" ";print $2}')
-
-    if [ -z "$elb_list" ]; then
-        return 1
-    else
-        msg "Got load balancer list of: $elb_list"
-        ELB_LIST=$elb_list
-        return 0
-    fi
-}
-
-# Usage: deregister_instance <EC2 instance ID> <ELB name>
-#
-#   Deregisters <EC2 instance ID> from <ELB name>.
+#   Deregisters <EC2 instance ID> from <target group name>.
 deregister_instance() {
     local instance_id=$1
-    local elb_name=$2
+    local target_group_name=$2
 
-    $AWS_CLI elb deregister-instances-from-load-balancer \
-        --load-balancer-name $elb_name \
-        --instances $instance_id 1> /dev/null
+    msg "Checking validity of target group named '$target_group_name'"
+    # If describe-target-groups call can return a valid format information, that means the target group is created fine
+    # The target group arn is required to query instance health against the target group
+    local target_group_arn=$($AWS_CLI elbv2 describe-target-groups \
+        --names $target_group_name \
+        --query 'TargetGroups[*].[TargetGroupArn]' \
+        --output text)
 
+    if [ $? != 0 ]; then
+        msg "Couldn't describe target group named '$target_group_name'"
+        return 1
+    fi
+
+    msg "Found target group arn $target_group_arn for target group $target_group"
+    msg "Deregistering $instnace_id from $target_group using target group arn $target_group_arn"
+
+    if test -z "$PORT"; then
+        $AWS_CLI elbv2 deregister-targets \
+            --target-group-arn $target_group_arn \
+            --targets Id=$instance_id 1> /dev/null
+    else
+      $AWS_CLI elbv2 deregister-targets \
+          --target-group-arn $target_group_arn \
+          --targets Id=$instance_id,Port=$PORT 1> /dev/null
+    fi
     return $?
 }
 
-# Usage: register_instance <EC2 instance ID> <ELB name>
+# Usage: register_instance <EC2 instance ID> <target group name>
 #
-#   Registers <EC2 instance ID> to <ELB name>.
+#   Registers <EC2 instance ID> to <target group name>.
 register_instance() {
     local instance_id=$1
-    local elb_name=$2
+    local target_group_name=$2
 
-    $AWS_CLI elb register-instances-with-load-balancer \
-        --load-balancer-name $elb_name \
-        --instances $instance_id 1> /dev/null
+    msg "Checking validity of target group named '$target_group_name'"
+    # If describe-target-groups call can return a valid format information, that means the target group is created fine
+    # The target group arn is required to query instance health against the target group
+
+    local target_group_info=$($AWS_CLI elbv2 describe-target-groups \
+        --names $target_group_name \
+        --query 'TargetGroups[*].[TargetGroupArn,Port]' \
+        --output text)
+
+    if [ $? != 0 ]; then
+        msg "Couldn't describe target group named '$target_group_name'"
+        return 1
+    fi
+
+    local target_group_arn=$(echo $target_group_info | awk '{print $1}')
+    if test -z "$PORT"; then
+        local target_group_port=$(echo $target_group_info | awk '{print $2}')
+    else
+        local target_group_port=$PORT
+    fi
+
+    msg "Registering instance instance '$instance_id' to target group '$target_group_name' against port '$target_group_port'"
+    $AWS_CLI elbv2 register-targets \
+        --target-group-arn $target_group_arn \
+        --targets Id=$instance_id,Port=$target_group_port 1> /dev/null
 
     return $?
 }
