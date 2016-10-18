@@ -187,7 +187,7 @@ autoscaling_group_name() {
     local autoscaling_name=$($AWS_CLI autoscaling describe-auto-scaling-instances \
         --instance-ids $instance_id \
         --output text \
-        --query AutoScalingInstances[0].AutoScalingGroupName)
+        --query AutoScalingInstances[0].AutoScalingGroupName | tr -d '\n\r')
 
     if [ $? != 0 ]; then
         return 1
@@ -211,8 +211,7 @@ autoscaling_enter_standby() {
     local asg_name=${2}
 
     msg "Checking if this instance has already been moved in the Standby state"
-    local instance_state_temp=$(get_instance_state_asg $instance_id)
-    local instance_state=${instance_state_temp::-1}
+    local instance_state=$(get_instance_state_asg $instance_id)
     if [ $? != 0 ]; then
         msg "Unable to get this instance's lifecycle state."
         return 1
@@ -295,11 +294,10 @@ autoscaling_enter_standby() {
 #   successful.
 autoscaling_exit_standby() {
     local instance_id=$1
-    local asg_name=${2}
+    local asg_name=${2} 
 
     msg "Checking if this instance has already been moved out of Standby state"
-    local instance_state_temp=$(get_instance_state_asg $instance_id)
-    local instance_state=${instance_state_temp::-1}
+    local instance_state=$(get_instance_state_asg $instance_id)
     if [ $? != 0 ]; then
         msg "Unable to get this instance's lifecycle state."
         return 1
@@ -316,9 +314,7 @@ autoscaling_exit_standby() {
     fi
 
     msg "Moving instance $instance_id out of Standby"
-    $AWS_CLI autoscaling exit-standby \
-        --instance-ids $instance_id \
-        --auto-scaling-group-name "${asg_name}"
+	$AWS_CLI autoscaling exit-standby --instance-ids $instance_id --auto-scaling-group-name ${asg_name}
     if [ $? != 0 ]; then
         msg "Failed to put instance $instance_id back into InService for ASG ${asg_name}."
         return 1
@@ -455,7 +451,7 @@ wait_for_state() {
 
     msg "Checking $WAITER_ATTEMPTS times, every $WAITER_INTERVAL seconds, for instance $instance_id to be in state $state_name"
 
-    local instance_state=$($instance_state_cmd)
+    local instance_state=$($instance_state_cmd | tr -d '\n\r')
     local count=1
 
     msg "Instance is currently in state: $instance_state"
@@ -468,9 +464,8 @@ wait_for_state() {
 
         sleep $WAITER_INTERVAL
 
-        instance_state_temp=$($instance_state_cmd)
-        instance_state=${instance_state_temp::-1}
-		count=$(($count + 1))
+        instance_state=$($instance_state_cmd | tr -d '\n\r')
+        count=$(($count + 1))
         msg "Instance is currently in state: $instance_state"
     done
 
