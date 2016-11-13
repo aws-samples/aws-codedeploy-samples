@@ -33,7 +33,7 @@ in the CLI's user guide.
 
 Note: the AWS CodeDeploy Agent requires that an instance profile be attached to all instances that
 are to participate in AWS CodeDeploy deployments. For more information on creating an instance
-profile for AWS CodeDeploy, see the [Create an IAM Instance Profile for Your Amazon EC2 Instances]()
+profile for AWS CodeDeploy, see the [Create an IAM Instance Profile for Your Amazon EC2 Instances](http://docs.aws.amazon.com/codedeploy/latest/userguide/how-to-create-iam-instance-profile.html)
 topic in the documentation.
 1. All instances are assumed to already have the AWS CodeDeploy Agent installed.
 
