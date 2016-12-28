@@ -1,0 +1,25 @@
+require 'rubygems'
+require 'rspec/core/rake_task'
+
+task :syntax do
+  dirs = [ 'bin/*', 'lib/*', 'spec/*']
+  dirs.each do |d|
+    ret = check_syntax(d)
+    exit_code = $?
+    puts ret
+    if !(/\ASyntax OK\Z/ =~ ret) or exit_code != 0
+      puts "Build failed, see above syntax error or warning"
+      exit(1)
+    end
+  end
+end
+
+def check_syntax(dir)
+  return `ruby --verbose -c #{dir} 2>&1`
+end
+
+RSpec::Core::RakeTask.new(:spec) do |t|
+  t.pattern = 'spec/**/*.spec'
+end
+
+task :default => [:syntax, :spec]
