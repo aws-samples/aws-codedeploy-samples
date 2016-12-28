@@ -59,8 +59,8 @@ Note: When using the gem for installation, get_sts_creds will be added to your P
 ```
 // Amazon Linux should have git, ruby, and gem installed
 $ gem install aws-sdk-core
-$ git clone https://github.com/aws/aws-codedeploy-session-helper.git OR gem install aws-codedeploy-session-helper
-$ bin/get_sts_creds <args>
+$ git clone https://github.com/awslabs/aws-codedeploy-samples.git OR gem install aws-codedeploy-session-helper
+$ utilities/aws-codedeploy-session-helper/bin/get_sts_creds <args>
 ```
 ### Ubuntu
 ```
@@ -68,16 +68,16 @@ $ sudo apt-get install ruby     // if not installed
 $ sudo apt-get install rubygems // if not installed. For 14.04, try rubygems-integration
 $ sudo apt-get install git      // if not installed and using git clone to install instead of gem
 $ sudo gem install aws-sdk-core
-$ git clone https://github.com/aws/aws-codedeploy-session-helper.git OR gem install aws-codedeploy-session-helper
-$ bin/get_sts_creds <args>
+$ git clone https://github.com/awslabs/aws-codedeploy-samples.git OR gem install aws-codedeploy-session-helper
+$ utilities/aws-codedeploy-session-helper/bin/get_sts_creds <args>
 ```
 ### Windows
 1. Install Ruby from rubyinstaller.org (the 2.3 version comes w/ Gem)
 1. `> gem install aws-sdk-core`
 1. Install Git from https://git-scm.com/download/win
-1. `> git clone https://github.com/aws/aws-codedeploy-session-helper.git` OR `> gem install aws-codedeploy-session-helper`
+1. `> git clone https://github.com/awslabs/aws-codedeploy-samples.git` OR `> gem install aws-codedeploy-session-helper`
 1. `> chdir <install dir>`
-1. `> ruby bin/get_sts_creds <args>`
+1. `> ruby utilities/aws-codedeploy-session-helper/bin/get_sts_creds <args>`
 ## Automation
 For a Linux machine, you can automate the execution of this tool with the following cron
 ```
