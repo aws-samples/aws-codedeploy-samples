@@ -55,7 +55,7 @@ if test -z "$TARGET_GROUP_LIST"; then
     error_exit "Must have at least one target group to deregister from"
 fi
 
-msg "Checking whehter the port number has been set"
+msg "Checking whether the port number has been set"
 if test -n "$PORT"; then
     if ! [[ $PORT =~ ^[0-9]+$ ]] ; then
        error_exit "$PORT is not a valid port number"
