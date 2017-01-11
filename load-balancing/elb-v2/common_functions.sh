@@ -420,7 +420,7 @@ deregister_instance() {
     fi
 
     msg "Found target group arn $target_group_arn for target group $target_group"
-    msg "Deregistering $instnace_id from $target_group using target group arn $target_group_arn"
+    msg "Deregistering $instance_id from $target_group using target group arn $target_group_arn"
 
     if test -z "$PORT"; then
         $AWS_CLI elbv2 deregister-targets \
