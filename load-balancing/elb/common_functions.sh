@@ -34,6 +34,10 @@ WAITER_ATTEMPTS=60
 # Number of seconds to wait between attempts for resource to be in a state.
 WAITER_INTERVAL=1
 
+# A factor to delay the process in case too many instances are running the same API which will cause throttling.
+# The process will be randomly delayed up to DELAY_FACTOR seconds
+DELAY_FACTOR=5
+
 # AutoScaling Standby features at minimum require this version to work.
 MIN_CLI_VERSION='1.3.25'
 
@@ -90,6 +94,7 @@ get_flag() {
 #   is suspended.
 check_suspended_processes() {
   # Get suspended processes in an array
+  delay_process
   local suspended=($($AWS_CLI autoscaling describe-auto-scaling-groups \
       --auto-scaling-group-name "${asg_name}" \
       --query 'AutoScalingGroups[].SuspendedProcesses' \
@@ -168,10 +173,10 @@ remove_flagfile() {
 #   Prints some finishing statistics
 finish_msg() {
   msg "Finished $(basename $0) at $(/bin/date "+%F %T")"
-  
+
   end_sec=$(/bin/date +%s.%N)
   elapsed_seconds=$(echo "$end_sec" "$start_sec" | awk '{ print $1 - $2 }')
-  
+
   msg "Elapsed time: $elapsed_seconds"
 }
 
@@ -236,6 +241,7 @@ autoscaling_enter_standby() {
     fi
 
     msg "Checking to see if ASG ${asg_name} will let us decrease desired capacity"
+    delay_process
     local min_desired=$($AWS_CLI autoscaling describe-auto-scaling-groups \
         --auto-scaling-group-name "${asg_name}" \
         --query 'AutoScalingGroups[0].[MinSize, DesiredCapacity]' \
@@ -329,10 +335,11 @@ autoscaling_exit_standby() {
         msg "Instance $instance_id did not make it to InService after $wait_timeout seconds"
         return 1
     fi
-    
+
     if ! local tmp_flag_value=$(get_flag "asgmindecremented"); then
         error_exit "$FLAGFILE doesn't exist or is unreadable"
     elif [ "$tmp_flag_value" = "true" ]; then
+        delay_process
         local min_desired=$($AWS_CLI autoscaling describe-auto-scaling-groups \
             --auto-scaling-group-name "${asg_name}" \
             --query 'AutoScalingGroups[0].[MinSize, DesiredCapacity]' \
@@ -625,6 +632,15 @@ check_cli_version() {
         return 0
     else
         return 1
+    fi
+}
+
+# Sleep for a random time period based on DELAY_FACTOR
+delay_process() {
+    if [ "$DELAY_FACTOR" -gt 0 ]; then
+        local sleep_time=$((($RANDOM % $DELAY_FACTOR) + 1))
+        msg "Sleeping for $sleep_time seconds before continue the process."
+        sleep $sleep_time
     fi
 }
 
