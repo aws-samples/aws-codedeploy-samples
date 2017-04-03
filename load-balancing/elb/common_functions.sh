@@ -29,7 +29,7 @@ export PATH="$PATH:/usr/bin:/usr/local/bin"
 DEBUG=true
 
 # If true, all commands will have a initial jitter - use this if deploying to significant number of instances only
-INITIAL_JITTER=true
+INITIAL_JITTER=false
 
 # Number of times to check for a resouce to be in the desired state.
 WAITER_ATTEMPTS=60
