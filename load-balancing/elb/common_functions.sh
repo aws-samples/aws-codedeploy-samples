@@ -141,7 +141,7 @@ check_suspended_processes() {
   local suspended=($($AWS_CLI autoscaling describe-auto-scaling-groups \
       --auto-scaling-group-name \"${asg_name}\" \
       --query \'AutoScalingGroups[].SuspendedProcesses\' \
-      --output text | awk \'{printf $1\" \"}\'))
+      --output text \| awk \'{printf \$1\" \"}\'))
 
   if [ ${#suspended[@]} -eq 0 ]; then
     msg "No processes were suspended on the ASG before starting."
@@ -596,8 +596,8 @@ get_elb_list() {
     local elb_list=""
 
     elb_list=$($AWS_CLI elb describe-load-balancers \
-      --query \"LoadBalancerDescriptions[].[join(',',Instances[?InstanceId=='$instance_id'].InstanceId),LoadBalancerName]\" \
-      --output text | grep $instance_id | awk \'{ORS=\" \";print $2}\')
+      --query \"LoadBalancerDescriptions[].[join\(\',\',Instances[?InstanceId==\'$instance_id\'].InstanceId\),LoadBalancerName]\" \
+      --output text \| grep $instance_id \| awk \'{ORS=\" \"\;print \$2}\')
 
     if [ -z "$elb_list" ]; then
         return 1
@@ -642,7 +642,7 @@ register_instance() {
 #   $MIN_CLI_VERSION. Returns non-zero if the version is not high enough.
 check_cli_version() {
     if [ -z $1 ]; then
-        version=$($AWS_CLI --version 2>&1 | cut -f1 -d' ' | cut -f2 -d/)
+        version=$($AWS_CLI --version 2\>\&1 \| cut -f1 -d\' \' \| cut -f2 -d/)
     else
         version=$1
     fi
