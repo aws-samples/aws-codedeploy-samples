@@ -122,7 +122,7 @@ set_flag() {
 #   Checks for <flag> in FLAGFILE. Echoes it's value and returns 0 on success or non-zero if it fails to read the file.
 get_flag() {
   if [ -r $FLAGFILE ]; then
-    local result=$(awk -F= -v flag="$1" '{if ( $1 == flag ) {print $2}}' $FLAGFILE)
+    local result=$(awk -F= -v flag="$1" '{if ( $1 == flag ) {print $2}}' $FLAGFILE | tail -1)
     echo "${result}"
     return 0
   else
