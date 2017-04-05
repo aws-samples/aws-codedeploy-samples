@@ -36,7 +36,7 @@ INITIAL_JITTER=false
 WAITER_ATTEMPTS=60
 
 # Number of seconds to wait between attempts for resource to be in a state for instance in ASG.
-WAITER_INTERVAL_ASG=1
+WAITER_INTERVAL_ASG=3
 
 # Number of seconds to wait between attempts for resource to be in a state for ALB registration/deregistration.
 WAITER_INTERVAL_ALB=10
