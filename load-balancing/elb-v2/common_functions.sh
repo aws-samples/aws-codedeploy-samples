@@ -29,17 +29,66 @@ export PATH="$PATH:/usr/bin:/usr/local/bin"
 # If true, all messages will be printed. If false, only fatal errors are printed.
 DEBUG=true
 
+# If true, all commands will have a initial jitter - use this if deploying to significant number of instances only
+INITIAL_JITTER=false
+
 # Number of times to check for a resouce to be in the desired state.
 WAITER_ATTEMPTS=60
 
 # Number of seconds to wait between attempts for resource to be in a state for instance in ASG.
-WAITER_INTERVAL_ASG=1
+WAITER_INTERVAL_ASG=3
 
 # Number of seconds to wait between attempts for resource to be in a state for ALB registration/deregistration.
 WAITER_INTERVAL_ALB=10
 
 # AutoScaling Standby features at minimum require this version to work.
 MIN_CLI_VERSION='1.10.55'
+
+#
+# Performs CLI command and provides expotential backoff with Jitter between any failed CLI commands
+# FullJitter algorithm taken from: https://www.awsarchitectureblog.com/2015/03/backoff.html
+# Optional pre-jitter can be enabled  via GLOBAL var INITIAL_JITTER (set to "true" to enable)
+#
+exec_with_fulljitter_retry() {
+    local MAX_RETRIES=${EXPBACKOFF_MAX_RETRIES:-8} # Max number of retries
+    local BASE=${EXPBACKOFF_BASE:-2} # Base value for backoff calculation
+    local MAX=${EXPBACKOFF_MAX:-120} # Max value for backoff calculation
+    local FAILURES=0
+    local RESP
+
+    # Perform initial jitter sleep if enabled
+    if [ "$INITIAL_JITTER" = "true" ]; then
+      local SECONDS=$(( $RANDOM % ( ($BASE * 2) ** 2 ) ))
+      sleep $SECONDS
+    fi
+
+    # Execute Provided Command
+    RESP=$(eval $@)
+    until [ $? -eq 0 ]; do
+        FAILURES=$(( $FAILURES + 1 ))
+        if (( $FAILURES > $MAX_RETRIES )); then
+            echo "$@" >&2
+            echo " * Failed, max retries exceeded" >&2
+            return 1
+        else
+            local SECONDS=$(( $RANDOM % ( ($BASE * 2) ** $FAILURES ) ))
+            if (( $SECONDS > $MAX )); then
+                SECONDS=$MAX
+            fi
+
+            echo "$@" >&2
+            echo " * $FAILURES failure(s), retrying in $SECONDS second(s)" >&2
+            sleep $SECONDS
+
+            # Re-Execute provided command
+            RESP=$(eval $@)
+        fi
+    done
+
+    # Echo out CLI response which is captured by calling function
+    echo $RESP
+    return 0
+}
 
 # Usage: get_instance_region
 #
@@ -54,7 +103,7 @@ get_instance_region() {
     echo $AWS_REGION
 }
 
-AWS_CLI="aws --region $(get_instance_region)"
+AWS_CLI="exec_with_fulljitter_retry aws --region $(get_instance_region)"
 
 # Usage: autoscaling_group_name <EC2 instance ID>
 #
@@ -110,8 +159,8 @@ autoscaling_enter_standby() {
 
     msg "Checking to see if ASG ${asg_name} will let us decrease desired capacity"
     local min_desired=$($AWS_CLI autoscaling describe-auto-scaling-groups \
-        --auto-scaling-group-name "${asg_name}" \
-        --query 'AutoScalingGroups[0].[MinSize, DesiredCapacity]' \
+        --auto-scaling-group-name \"${asg_name}\" \
+        --query \'AutoScalingGroups[0].[MinSize, DesiredCapacity]\' \
         --output text)
 
     local min_cap=$(echo $min_desired | awk '{print $1}')
@@ -124,7 +173,7 @@ autoscaling_enter_standby() {
         local new_min=$(($min_cap - 1))
         msg "Decrementing ASG ${asg_name}'s minimum size to $new_min"
         msg $($AWS_CLI autoscaling update-auto-scaling-group \
-            --auto-scaling-group-name "${asg_name}" \
+            --auto-scaling-group-name \"${asg_name}\" \
             --min-size $new_min)
         if [ $? != 0 ]; then
             msg "Failed to reduce ASG ${asg_name}'s minimum size to $new_min. Cannot put this instance into Standby."
@@ -139,7 +188,7 @@ autoscaling_enter_standby() {
     msg "Putting instance $instance_id into Standby"
     $AWS_CLI autoscaling enter-standby \
         --instance-ids $instance_id \
-        --auto-scaling-group-name "${asg_name}" \
+        --auto-scaling-group-name \"${asg_name}\" \
         --should-decrement-desired-capacity
     if [ $? != 0 ]; then
         msg "Failed to put instance $instance_id into Standby for ASG ${asg_name}."
@@ -185,7 +234,7 @@ autoscaling_exit_standby() {
     msg "Moving instance $instance_id out of Standby"
     $AWS_CLI autoscaling exit-standby \
         --instance-ids $instance_id \
-        --auto-scaling-group-name "${asg_name}"
+        --auto-scaling-group-name \"${asg_name}\"
     if [ $? != 0 ]; then
         msg "Failed to put instance $instance_id back into InService for ASG ${asg_name}."
         return 1
@@ -201,8 +250,8 @@ autoscaling_exit_standby() {
 
     if [ -a /tmp/asgmindecremented ]; then
         local min_desired=$($AWS_CLI autoscaling describe-auto-scaling-groups \
-            --auto-scaling-group-name "${asg_name}" \
-            --query 'AutoScalingGroups[0].[MinSize, DesiredCapacity]' \
+            --auto-scaling-group-name \"${asg_name}\" \
+            --query \'AutoScalingGroups[0].[MinSize, DesiredCapacity]\' \
             --output text)
 
         local min_cap=$(echo $min_desired | awk '{print $1}')
@@ -210,7 +259,7 @@ autoscaling_exit_standby() {
         local new_min=$(($min_cap + 1))
         msg "Incrementing ASG ${asg_name}'s minimum size to $new_min"
         msg $($AWS_CLI autoscaling update-auto-scaling-group \
-            --auto-scaling-group-name "${asg_name}" \
+            --auto-scaling-group-name \"${asg_name}\" \
             --min-size $new_min)
         if [ $? != 0 ]; then
             msg "Failed to increase ASG ${asg_name}'s minimum size to $new_min."
@@ -237,7 +286,7 @@ get_instance_state_asg() {
 
     local state=$($AWS_CLI autoscaling describe-auto-scaling-instances \
         --instance-ids $instance_id \
-        --query "AutoScalingInstances[?InstanceId == \`$instance_id\`].LifecycleState | [0]" \
+        --query \"AutoScalingInstances[?InstanceId == \'$instance_id\'].LifecycleState \| [0]\" \
         --output text)
     if [ $? != 0 ]; then
         return 1
@@ -261,7 +310,7 @@ reset_waiter_timeout() {
         msg "Getting target group health check configuration for target group $target_group_name"
         local target_group_info=$($AWS_CLI elbv2 describe-target-groups \
             --names $target_group_name \
-            --query 'TargetGroups[*].[HealthCheckIntervalSeconds,HealthCheckTimeoutSeconds,HealthyThresholdCount]' \
+            --query \'TargetGroups[*].[HealthCheckIntervalSeconds,HealthCheckTimeoutSeconds,HealthyThresholdCount]\' \
             --output text)
 
         if [ $? != 0 ]; then
@@ -278,13 +327,13 @@ reset_waiter_timeout() {
         msg "Getting target group arn for target group $target_group_name"
         local target_group_arn=$($AWS_CLI elbv2 describe-target-groups \
             --names $target_group \
-            --query 'TargetGroups[*].[TargetGroupArn]' \
+            --query \'TargetGroups[*].[TargetGroupArn]\' \
             --output text)
 
         msg "Getting instance deregistration delay timeout for target group $target_group with target group arn $target_group_arn"
         local timeout=$($AWS_CLI elbv2 describe-target-group-attributes \
             --target-group-arn $target_group_arn \
-            --query "Attributes[?Key=='deregistration_delay.timeout_seconds'].Value[]" \
+            --query \"Attributes[?Key==\'deregistration_delay.timeout_seconds\'].Value[]\" \
             --output text)
     else
         msg "Unknown state name, '$state_name'";
@@ -363,7 +412,7 @@ get_instance_health_target_group() {
 
     local target_group_info=$($AWS_CLI elbv2 describe-target-groups \
         --names $target_group \
-        --query 'TargetGroups[*].[TargetGroupArn,Port]' \
+        --query \'TargetGroups[*].[TargetGroupArn,Port]\' \
         --output text)
 
     if [ $? != 0 ]; then
@@ -383,7 +432,7 @@ get_instance_health_target_group() {
     local instance_status=$($AWS_CLI elbv2 describe-target-health \
         --target-group-arn $target_group_arn \
         --targets Id=$instance_id,Port=$target_group_port \
-        --query 'TargetHealthDescriptions[*].TargetHealth[].State' \
+        --query \'TargetHealthDescriptions[*].TargetHealth[].State\' \
         --output text 2>/dev/null)
 
     if [ $? == 0 ]; then
@@ -411,7 +460,7 @@ deregister_instance() {
     # The target group arn is required to query instance health against the target group
     local target_group_arn=$($AWS_CLI elbv2 describe-target-groups \
         --names $target_group_name \
-        --query 'TargetGroups[*].[TargetGroupArn]' \
+        --query \'TargetGroups[*].[TargetGroupArn]\' \
         --output text)
 
     if [ $? != 0 ]; then
@@ -447,7 +496,7 @@ register_instance() {
 
     local target_group_info=$($AWS_CLI elbv2 describe-target-groups \
         --names $target_group_name \
-        --query 'TargetGroups[*].[TargetGroupArn,Port]' \
+        --query \'TargetGroups[*].[TargetGroupArn,Port]\' \
         --output text)
 
     if [ $? != 0 ]; then
