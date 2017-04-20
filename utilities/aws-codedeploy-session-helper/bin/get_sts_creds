@@ -1,0 +1,44 @@
+#!/usr/bin/env ruby
+
+require 'optparse'
+require File.expand_path('../../lib/STSCredentialsProvider', __FILE__)
+
+# Setup parser
+options = {}
+OptionParser.new do |parser|
+  parser.banner = "Usage: get_sts_creds --role-arn ROLE_ARN --file FILEPATH [options]"
+  parser.on("-h", "--help", "Show this help message", "\tNote: Pass credentials using environment variables or credentials file, see http://docs.aws.amazon.com/sdk-for-ruby/v2/developer-guide/setup-config.html") do ||
+    puts parser
+    exit
+  end
+
+  parser.on("--role-arn ROLE_ARN", "[required] The IAM ARN that the AWS IAM Role that the session credentials will assume",
+            "\tExample: '--role-arn arn:aws:iam::123456789012:role/FooRole'") do |v|
+    options[:role] = v
+  end
+  parser.on("--file FILEPATH", "[required] The fully qualified file path that the session credentials will be writen to",
+            "\tExample: '--file /foo/baz/aws_session_creds'") do |v|
+    options[:creds_file] = v
+  end
+  parser.on("--region REGION", "The AWS region for configuring outbound AWS calls",
+            "By default, this tool will check the AWS_REGION environment variable", "\tExample: '--region us-east-1'") do |v|
+    options[:region] = v
+  end
+  parser.on("--session-name-override SESSION_NAME", "The name for the IAM Session that will be included in the AWS STS Session ARN",
+            "By default, this tool will use the HOSTNAME of the current.",
+            "\tExample: '--session-name-override test-session'") do |v|
+    options[:session_name] = v
+  end
+  parser.on("--duration SECONDS", "The duration (in seconds) of the life of the session credentials that this tool generates",
+            "Defaults to 3600, or one hour. Value must be between 900 and 3600",
+            "\tExample: '--duration 1800'") do |v|
+    options[:duration] = v
+  end
+  parser.on("--print-session-arn", "Provide this flag to have the tool output (STDOUT) the ARN of the STS Session",
+            "Defaults to not printing arn") do |v|
+    options[:output_arn] = v
+  end
+end.parse!
+
+provider = STSCredentialsProvider.new(options)
+provider.get
