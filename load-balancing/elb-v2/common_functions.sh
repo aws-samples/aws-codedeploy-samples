@@ -321,7 +321,7 @@ reset_waiter_timeout() {
         msg "Calculating timeout for register instance in target group $target_group_name"
         local health_check_interval=$(echo $target_group_info | awk '{print $1}')
         local health_check_timeout=$(echo $target_group_info | awk '{print $2}')
-        local health_check_threshold=$(echo $target_group_info | awk '{print $2}')
+        local health_check_threshold=$(echo $target_group_info | awk '{print $3}')
         local timeout=$(echo "$health_check_threshold * ( $health_check_timeout + $health_check_interval )" | /usr/bin/bc)
     elif [ "$state_name" == "unused" ]; then
         msg "Getting target group arn for target group $target_group_name"
