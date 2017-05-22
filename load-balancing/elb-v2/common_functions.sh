@@ -35,6 +35,12 @@ INITIAL_JITTER=false
 # Number of times to check for a resouce to be in the desired state.
 WAITER_ATTEMPTS=60
 
+# Number of times to check for a resouce to be in the desired state when putting a host in an ASG
+# into StandBy. By default, ELB application load balancers wait 300 seconds for connections to drain,
+# so this will wait 360 seconds before timing out. To reduce or increase the timeout, increase/decrease
+# the connection draining in your ELB accordingly and update this value.
+WAITER_ATTEMPTS_ASG_ENTER_STANDBY=120
+
 # Number of seconds to wait between attempts for resource to be in a state for instance in ASG.
 WAITER_INTERVAL_ASG=3
 
@@ -196,7 +202,7 @@ autoscaling_enter_standby() {
     fi
 
     msg "Waiting for move to Standby to finish"
-    wait_for_state "autoscaling" $instance_id "Standby"
+    wait_for_state "autoscaling" $instance_id "Standby" "" $WAITER_ATTEMPTS_ASG_ENTER_STANDBY
     if [ $? != 0 ]; then
         local wait_timeout=$(($WAITER_INTERVAL_ASG * $WAITER_ATTEMPTS))
         msg "Instance $instance_id did not make it to standby after $wait_timeout seconds"
@@ -351,12 +357,13 @@ reset_waiter_timeout() {
 #    Waits for the state of <EC2 instance ID> to be in <state> as seen by <service>. Returns 0 if
 #    it successfully made it to that state; non-zero if not. By default, checks $WAITER_ATTEMPTS
 #    times, every $waiter_interval seconds. If giving an [target group name] to check under, these are reset
-#    to that target's timeout values.
+#    to that target's timeout values. Pass in a 5th argument to increase the number of waiter attempts.
 wait_for_state() {
     local service=$1
     local instance_id=$2
     local state_name=$3
     local target_group=$4
+    local waiter_attempts=$5
 
     local instance_state_cmd
     if [ "$service" == "alb" ]; then
@@ -374,15 +381,21 @@ wait_for_state() {
         return 1
     fi
 
-    msg "Checking $WAITER_ATTEMPTS times, every $waiter_interval seconds, for instance $instance_id to be in state $state_name"
+    # Check if a custom waiter_attempts was passed into the function
+    # and override the attemps if true
+    if [ -z "$waiter_attempts" ]; then
+        local waiter_attempts=$WAITER_ATTEMPTS
+    fi
+
+    msg "Checking $waiter_attempts times, every $waiter_interval seconds, for instance $instance_id to be in state $state_name"
 
     local instance_state=$($instance_state_cmd)
     local count=1
 
     msg "Instance is currently in state: $instance_state"
     while [ "$instance_state" != "$state_name" ]; do
-        if [ $count -ge $WAITER_ATTEMPTS ]; then
-            local timeout=$(($WAITER_ATTEMPTS * $waiter_interval))
+        if [ $count -ge $waiter_attempts ]; then
+            local timeout=$(($waiter_attempts * $waiter_interval))
             msg "Instance failed to reach state, $state_name within $timeout seconds"
             return 1
         fi
