@@ -46,6 +46,6 @@ To use these scripts in your own application:
 1. Copy the `.sh` files in this directory into your application source.
 1. Edit your application's `appspec.yml` to run `deregister_from_elb.sh` on the ApplicationStop event,
 and `register_with_elb.sh` on the ApplicationStart event.
-1. Edit `common_functions.sh` to set `TARGET_LIST` to contain the name(s) of the Target Group your deployment group is a part of. Make sure the entries in TARGET_LIST are separated by space.
+1. Edit `common_functions.sh` to set `TARGET_GROUP_LIST` to contain the name(s) of the Target Group your deployment group is a part of. Make sure the entries in `TARGET_GROUP_LIST` are separated by space.
 1. Edit `common_functions.sh` to set `PORT` to the port number your application is running at (if it's different from the default port number set in Target Group)
 1. Deploy!

@@ -13,8 +13,8 @@
 # express or implied. See the License for the specific language governing
 # permissions and limitations under the License.
 
-# TARGET_LIST defines which target groups behind Load Balancer this instance should be part of.
-# The elements in TARGET_LIST should be seperated by space.
+# TARGET_GROUP_LIST defines which target groups behind Load Balancer this instance should be part of.
+# The elements in TARGET_GROUP_LIST should be seperated by space.
 TARGET_GROUP_LIST=""
 
 # PORT defines which port the application is running at.
