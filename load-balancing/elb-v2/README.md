@@ -21,6 +21,8 @@ The following requirements must be met for the register and deregister scripts t
     autoscaling:EnterStandby
     autoscaling:ExitStandby
     autoscaling:UpdateAutoScalingGroup
+    autoscaling:SuspendProcesses
+    autoscaling:ResumeProcesses
 ```
 
 For information about creating an IAM instance profile to use with AWS CodeDeploy, see [Create an IAM Instance Profile for Your Amazon EC2 Instances](http://docs.aws.amazon.com/codedeploy/latest/userguide/how-to-create-iam-instance-profile.html).
@@ -73,3 +75,20 @@ PORT="80"
 ```
 
 7. Deploy your application. For information, see [Create a Deployment with AWS CodeDeploy](http://docs.aws.amazon.com/codedeploy/latest/userguide/deployments-create.html).
+
+## Important notice about handling AutoScaling processes
+
+When using AutoScaling with CodeDeploy you have to consider some edge cases during the deployment time window:
+
+1. If you have a scale up event, the new instance(s) will get the latest successful *Revision*, and not the one you are currently deploying. You will end up with a fleet of mixed revisions.
+2. If you have a scale down event, instances are going to be terminated, and your deployment will (probably) fail.
+3. If your instances are not balanced accross Availability Zones **and you are** using these scripts, AutoScaling may terminate some instances or create new ones to maintain balance (see [this doc](http://docs.aws.amazon.com/autoscaling/latest/userguide/as-suspend-resume-processes.html#process-types)), interfering with your deployment.
+4. If you have the health checks of your AutoScaling Group based off the ELB's ([documentation](http://docs.aws.amazon.com/autoscaling/latest/userguide/healthcheck.html)) **and you are not** using these scripts, then instances will be marked as unhealthy and terminated, interfering with your deployment.
+
+In an effort to solve these cases, the scripts can suspend some AutoScaling processes (AZRebalance, AlarmNotification, ScheduledActions and ReplaceUnhealthy) while deploying, to avoid those events happening in the middle of your deployment. You only have to set up `HANDLE_PROCS=true` in `common_functions.sh`.
+
+A record of the previously (to the start of the deployment) suspended process is kept by the scripts (on each instance), so when finishing the deployment the status of the processes on the AutoScaling Group should be returned to the same status as before. I.e. if AZRebalance was suspended manually it will not be resumed. However, if the scripts don't run (failed deployment) you may end up with stale suspended processes.
+
+Disclaimer: There's a small chance that an event is triggered while the deployment is progressing from one instance to another. The only way to avoid that completely would be to monitor the deployment externally to CodeDeploy/AutoScaling and act accordingly. The effort on doing that compared to this depends on the each use case.
+
+**WARNING**: If you are using this functionality you should only use *CodeDepoyDefault.OneAtATime* deployment configuration to ensure a serial execution of the scripts. Concurrent runs are not supported.
