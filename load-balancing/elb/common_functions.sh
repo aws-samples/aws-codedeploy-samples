@@ -445,9 +445,15 @@ reset_waiter_timeout() {
     if [ "$state_name" == "InService" ]; then
 
         # Wait for a health check to succeed
-        local timeout=$($AWS_CLI elb describe-load-balancers \
+        local elb_info=$($AWS_CLI elb describe-load-balancers \
             --load-balancer-name $elb \
-            --query \'LoadBalancerDescriptions[0].HealthCheck.Timeout\')
+            --query \'LoadBalancerDescriptions[0].HealthCheck.[HealthyThreshold,Interval,Timeout]\' \
+            --output text)
+
+        local health_check_threshold=$(echo $elb_info | awk '{print $1}')
+        local health_check_interval=$(echo $elb_info | awk '{print $2}')
+        local health_check_timeout=$(echo $elb_info | awk '{print $3}')
+        local timeout=$((health_check_threshold * (health_check_interval + health_check_timeout)))
 
     elif [ "$state_name" == "OutOfService" ]; then
 
