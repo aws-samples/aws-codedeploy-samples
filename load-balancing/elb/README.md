@@ -52,4 +52,4 @@ A record of the previously (to the start of the deployment) suspended process is
 
 Disclaimer: There's a small chance that an event is triggered while the deployment is progressing from one instance to another. The only way to avoid that completely whould be to monitor the deployment externally to CodeDeploy/AutoScaling and act accordingly. The effort on doing that compared to this depends on the each use case.
 
-**WARNING**: If you are using this functionality you should only use *CodeDepoyDefault.OneAtATime* deployment configuration to ensure a serial execution of the scripts. Concurrent runs are not supported.
+**WARNING**: If you are using this functionality you should only use *CodeDeployDefault.OneAtATime* deployment configuration to ensure a serial execution of the scripts. Concurrent runs are not supported.
