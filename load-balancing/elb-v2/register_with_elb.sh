@@ -50,9 +50,37 @@ fi
 
 msg "Instance is not part of an ASG, continuing..."
 
-msg "Checking that user set at least one target group"
 if test -z "$TARGET_GROUP_LIST"; then
-    error_exit "Must have at least one target group to register to"
+    error_exit "TARGET_GROUP_LIST is empty. Must have at least one target group to register to, or \"_all_\", \"_any_\" values."
+elif [ "${TARGET_GROUP_LIST}" = "_all_" ]; then
+    if [ "$(get_flag "dereg")" = "true" ]; then
+        msg "Finding all the target groups that this instance was previously registered to"
+        if ! TARGET_GROUP_LIST=$(get_flag "TGs"); then
+          error_exit "$FLAGFILE doesn't exist or is unreadble"
+        elif [ -z $TARGET_GROUP_LIST ]; then
+          error_exit "Couldn't find any. Must have at least one load balancer to register to."
+        fi
+    else
+        msg "Assuming this is the first deployment and TARGET_GROUP_LIST=_all_ so finishing successfully without registering."
+        finish_msg
+        exit 0
+    fi
+elif [ "${TARGET_GROUP_LIST}" = "_any_" ]; then
+    if [ "$(get_flag "dereg")" = "true" ]; then
+        msg "Finding all the target groups that this instance was previously registered to"
+        if ! TARGET_GROUP_LIST=$(get_flag "TGs"); then
+            error_exit "$FLAGFILE doesn't exist or is unreadble"
+        elif [ -z $TARGET_GROUP_LIST ]; then
+            msg "Couldn't find any, but TARGET_GROUP_LIST=_any_ so finishing successfully without registering."
+            remove_flagfile
+            finish_msg
+            exit 0
+        fi
+    else
+        msg "Assuming this is the first deployment and TARGET_GROUP_LIST=_any_ so finishing successfully without registering."
+        finish_msg
+        exit 0
+    fi
 fi
 
 msg "Checking whehter the port number has been set"

@@ -50,9 +50,25 @@ fi
 
 msg "Instance is not part of an ASG, continuing..."
 
-msg "Checking that user set at least one valid target group"
 if test -z "$TARGET_GROUP_LIST"; then
-    error_exit "Must have at least one target group to deregister from"
+    error_exit "TARGET_GROUP_LIST is empty. Must have at least one target group to deregister from, or \"_all_\", \"_any_\" values."
+elif [ "${TARGET_GROUP_LIST}" = "_all_" ]; then
+    msg "Automatically finding all the target groups that this instance is registered to..."
+    get_target_group_list $INSTANCE_ID
+    if [ $? != 0 ]; then
+        error_exit "Couldn't find any. Must have at least one target group to deregister from."
+    fi
+    set_flag "TGs" "$TARGET_GROUP_LIST"
+elif [ "${TARGET_GROUP_LIST}" = "_any_" ]; then
+    msg "Automatically finding all the target groups that this instance is registered to..."
+    get_target_group_list $INSTANCE_ID
+    if [ $? != 0 ]; then
+        msg "Couldn't find any, but TARGET_GROUP_LIST=any so finishing successfully without deregistering."
+        set_flag "TGs" ""
+        finish_msg
+        exit 0
+    fi
+    set_flag "TGs" "$TARGET_GROUP_LIST"
 fi
 
 msg "Checking whether the port number has been set"

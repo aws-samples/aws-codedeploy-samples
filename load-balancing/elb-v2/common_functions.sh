@@ -14,7 +14,10 @@
 # permissions and limitations under the License.
 
 # TARGET_LIST defines which target groups behind Load Balancer this instance should be part of.
-# The elements in TARGET_LIST should be seperated by space.
+# The elements in TARGET_LIST should be seperated by space. Safe default is "".
+# Set to "_all_" to automatically find all target groups the instance is registered to.
+# Set to "_any_" will work as "_all_" but will not fail if instance is not attached to
+# any ASG or target group, giving flexibility.
 TARGET_GROUP_LIST=""
 
 # PORT defines which port the application is running at.
@@ -583,6 +586,32 @@ get_instance_health_target_group() {
                 msg "Couldn't retrieve instance health status for instance '$instance_id' in target group '$target_group'"
                 return 1
         esac
+    fi
+}
+
+
+# Usage: get_target_group_list <EC2 instance ID>
+#
+#   Finds all the target groups that this instance is registered to. After execution, the variable
+#   "TARGET_GROUP_LIST" will contain the list of target groups for the given instance.
+#
+#   If the given instance ID isn't found registered to any target groups, the function returns non-zero
+get_target_group_list() {
+    local instance_id=$1
+
+    local asg=$(autoscaling_group_name $instance_id)
+
+    local target_group_list=$($AWS_CLI autoscaling describe-auto-scaling-groups \
+      --auto-scaling-group-name $asg \
+      --query \"AutoScalingGroups[].TargetGroupARNs\" \
+      --output text)
+
+    if [ -z "$target_group_list" ]; then
+        return 1
+    else
+        msg "Got target group list of: $target_group_list"
+        TARGET_GROUP_LIST=$target_group_list
+        return 0
     fi
 }
 
