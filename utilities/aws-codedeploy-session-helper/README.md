@@ -43,7 +43,7 @@ File location - Windows
 %HOMEPATH%\.aws\credentials
 ```
 ### Working with AWS CodeDeploy
-This tool will help customers of [AWS CodeDeploy](https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=1&cad=rja&uact=8&ved=0ahUKEwjqoYOU8-LPAhXLsFQKHV4ZDzAQFggeMAA&url=https%3A%2F%2Faws.amazon.com%2Fcodedeploy%2F&usg=AFQjCNFJWFZ0JuuOFbyE390fglFUUi9sXA&sig2=fDXnI7wC1k6B578J-zPDuw)'s OnPremises instance deployment feature by enabling the retrieval and refreshment of the STS credentials that the on premises instance needs. Customers can quickly integrate on premises instances with AWS CodeDeploy by using the AWS CodeDeploy IAM Session support feature [LINK].
+This tool will help customers of [AWS CodeDeploy](https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=1&cad=rja&uact=8&ved=0ahUKEwjqoYOU8-LPAhXLsFQKHV4ZDzAQFggeMAA&url=https%3A%2F%2Faws.amazon.com%2Fcodedeploy%2F&usg=AFQjCNFJWFZ0JuuOFbyE390fglFUUi9sXA&sig2=fDXnI7wC1k6B578J-zPDuw)'s OnPremises instance deployment feature by enabling the retrieval and refreshment of the STS credentials that the on premises instance needs. Customers can quickly integrate on premises instances with AWS CodeDeploy by using the [AWS CodeDeploy IAM Session support feature](https://docs.aws.amazon.com/codedeploy/latest/userguide/register-on-premises-instance-iam-session-arn.html).
 
 You can use this tool with a centralized STS credential broker service distribute credentials to other on premises instances, or deploy a fixed IAM User to each host, then have each host use that IAM user's credentials with this tool to retrieve STS credentials.
 
