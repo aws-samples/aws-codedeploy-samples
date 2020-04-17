@@ -86,9 +86,9 @@ def get_package(module, pkg_type):
 
     return dest
 
-def install_pacakge(source, pkg_type):
+def install_package(source, pkg_type):
     cmd = ''
-    if pkg_type == 'deb': 
+    if pkg_type == 'deb':
         cmd = 'dpkg -i ' + source + '; apt-get -q -y -f install'
     elif pkg_type == 'rpm':
         cmd = 'yum install -q -y ' + source
@@ -118,7 +118,7 @@ def main():
             module.fail_json(msg="must install the AWS CodeDeploy on a supported OS type")
 
         pkg = get_package(module, pkg_type)
-        install_pacakge(pkg, pkg_type)
+        install_package(pkg, pkg_type)
     except Exception, e:
         module.fail_json(msg=str(e))
 
