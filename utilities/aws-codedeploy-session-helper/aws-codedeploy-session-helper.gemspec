@@ -13,7 +13,7 @@ Gem::Specification.new do |s|
   s.license       = 'Apache-2.0'
 
   s.add_runtime_dependency('aws-sdk-core', '~> 2.6')
-  s.add_development_dependency('rake', '~> 0.9')
+  s.add_development_dependency('rake', '~> 12.3.3')
   s.add_development_dependency('simplecov', '~> 0.12')
   s.add_development_dependency('rspec', '~> 3.5')
 end
