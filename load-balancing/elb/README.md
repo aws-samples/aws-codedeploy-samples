@@ -41,7 +41,8 @@ Alternatively, you can set `ELB_LIST` to `_all_` to automatically use all load b
 
 When using AutoScaling with CodeDeploy you have to consider some edge cases during the deployment time window:
 
-1. If you have a scale up event, the new instance(s) will get the latest successful *Revision*, and not the one you are currently deploying. You will end up with a fleet of mixed revisions.
+1. If you have a scale up event, the new instance(s) will get the latest successful *Revision*, and not the one you are currently deploying, so you will have a fleet of mixed revisions. To bring the outdated instances up to date, CodeDeploy automatically starts a follow-on deployment (immediatedly after the first) to update
+any outdated instances so that all instances end up on the same revision. If you'd like to change this default behavior so that outdated EC2 instances are left at the older revision, see [Configure advanced options for a deployment group](https://docs.aws.amazon.com/codedeploy/latest/userguide/deployment-groups-configure-advanced-options.html).
 2. If you have a scale down event, instances are going to be terminated, and your deployment will (probably) fail.
 3. If your instances are not balanced accross Availability Zones **and you are** using these scripts, AutoScaling may terminate some instances or create new ones to maintain balance (see [this doc](http://docs.aws.amazon.com/autoscaling/latest/userguide/as-suspend-resume-processes.html#process-types)), interfering with your deployment.
 4. If you have the health checks of your AutoScaling Group based off the ELB's ([documentation](http://docs.aws.amazon.com/autoscaling/latest/userguide/healthcheck.html)) **and you are not** using these scripts, then instances will be marked as unhealthy and terminated, interfering with your deployment.
