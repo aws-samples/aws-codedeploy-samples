@@ -685,14 +685,22 @@ check_cli_version() {
     msg "Checking minimum required CLI version (${min_version}) against installed version ($version)"
 
     if [ $x -lt $min_x ]; then
+        # major version is less than required. fail.
         return 1
+    elif [ $x -gt $min_x ]; then
+        # major version is greater than required. succeed.
+        return 0
     elif [ $y -lt $min_y ]; then
+        # minor version is less than required. fail.
         return 1
     elif [ $y -gt $min_y ]; then
+        # minor version is greater than required. succeed.
         return 0
     elif [ $z -ge $min_z ]; then
+        # patch version is at least the required version. succeed.
         return 0
     else
+        # patch version is insufficient. fail.
         return 1
     fi
 }
