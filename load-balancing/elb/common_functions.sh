@@ -381,13 +381,16 @@ autoscaling_exit_standby() {
 
     if ! local tmp_flag_value=$(get_flag "asgmindecremented"); then
         error_exit "$FLAGFILE doesn't exist or is unreadable"
-    elif [ "$tmp_flag_value" = "true" ]; then
-        local min_desired=$($AWS_CLI autoscaling describe-auto-scaling-groups \
-            --auto-scaling-group-name \"${asg_name}\" \
-            --query \'AutoScalingGroups[0].[MinSize, DesiredCapacity]\' \
-            --output text)
+    fi
+    
+    local min_desired=$($AWS_CLI autoscaling describe-auto-scaling-groups \
+        --auto-scaling-group-name \"${asg_name}\" \
+        --query \'AutoScalingGroups[0].[MinSize, DesiredCapacity]\' \
+        --output text)
 
-        local min_cap=$(echo $min_desired | awk '{print $1}')
+    local min_cap=$(echo $min_desired | awk '{print $1}')
+ 
+    if [ $min_cap -eq 0 -o "$tmp_flag_value" = "true" ]; then
 
         local new_min=$(($min_cap + 1))
         msg "Incrementing ASG ${asg_name}'s minimum size to $new_min"
