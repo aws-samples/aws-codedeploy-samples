@@ -97,9 +97,8 @@ exec_with_fulljitter_retry() {
 #   Writes to STDOUT the AWS region as known by the local instance.
 get_instance_region() {
     if [ -z "$AWS_REGION" ]; then
-        AWS_REGION=$(curl -s http://169.254.169.254/latest/dynamic/instance-identity/document \
-            | grep -i region \
-            | awk -F\" '{print $4}')
+        TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+        AWS_REGION=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" -s http://169.254.169.254/latest/meta-data/placement/region)
     fi
 
     echo $AWS_REGION
@@ -706,6 +705,7 @@ error_exit() {
 #   Writes to STDOUT the EC2 instance ID for the local instance. Returns non-zero if the local
 #   instance metadata URL is inaccessible.
 get_instance_id() {
-    curl -s http://169.254.169.254/latest/meta-data/instance-id
+    TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+    curl -H "X-aws-ec2-metadata-token: $TOKEN" -s http://169.254.169.254/latest/meta-data/instance-id
     return $?
 }
